@@ -319,51 +319,45 @@ function zZzUILibrary:CreateWindow(options)
     -- Por padrão usa quase a tela toda no mobile e uma área grande no PC.
     -- Você ainda pode sobrescrever com options.Scale / WidthScale / HeightScale.
     local function IsSmallViewport(vp)
-        -- Touch, notebook pequeno, tablet e mobile precisam ocupar quase a tela toda.
-        return UIS.TouchEnabled or vp.X <= 1100 or vp.Y <= 650
+        -- Apenas usado para margens/limites; o tamanho padrão fica em cerca de 60% da tela.
+        return UIS.TouchEnabled or vp.X <= 900 or vp.Y <= 540
     end
 
-    local DEFAULT_SCALE_X = options.Scale or nil
-    local DEFAULT_SCALE_Y = options.Scale or nil
-    local MIN_CONTENT_W = options.MinContentWidth or 500
-    local MIN_CONTENT_H = options.MinContentHeight or 320
+    -- Tamanho padrão corrigido: ~60% da largura e ~68% da altura.
+    -- Pode sobrescrever no CreateWindow com Scale / WidthScale / HeightScale.
+    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or 0.60
+    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or 0.68
 
-    local MIN_WIN_W = options.MinWidth or 760
-    local MIN_WIN_H = options.MinHeight or 500
+    local MIN_CONTENT_W = options.MinContentWidth or 330
+    local MIN_CONTENT_H = options.MinContentHeight or 230
+
+    local MIN_WIN_W = options.MinWidth or 300
+    local MIN_WIN_H = options.MinHeight or 320
     local MAX_WIN_W = options.MaxWidth or math.huge
     local MAX_WIN_H = options.MaxHeight or math.huge
 
     local WIN_W, WIN_H, SIDE_W
     local function CalculateResponsive(vp)
         local small = IsSmallViewport(vp)
-        local scaleX = options.WidthScale or DEFAULT_SCALE_X or (small and 0.96 or 0.82)
-        local scaleY = options.HeightScale or DEFAULT_SCALE_Y or (small and 0.92 or 0.86)
-
-        local safeW = math.max(320, vp.X - (small and 8 or 24))
-        local safeH = math.max(260, vp.Y - (small and 8 or 24))
+        local safeW = math.max(280, vp.X - (small and 8 or 24))
+        local safeH = math.max(240, vp.Y - (small and 8 or 24))
 
         local maxW = math.min(MAX_WIN_W, safeW)
         local maxH = math.min(MAX_WIN_H, safeH)
         local minW = math.min(MIN_WIN_W, maxW)
         local minH = math.min(MIN_WIN_H, maxH)
 
-        local w = math.clamp(math.floor(vp.X * scaleX), minW, maxW)
-        local h = math.clamp(math.floor(vp.Y * scaleY), minH, maxH)
+        local w = math.clamp(math.floor(vp.X * DEFAULT_SCALE_X), minW, maxW)
+        local h = math.clamp(math.floor(vp.Y * DEFAULT_SCALE_Y), minH, maxH)
 
-        -- Sidebar adaptável: nunca deixa a área principal ficar apertada demais.
-        local sideMin = small and 104 or 128
-        local sideMax = small and 160 or 190
-        local side = math.clamp(math.floor(w * (small and 0.20 or 0.21)), sideMin, sideMax)
+        -- Sidebar menor para não virar um bloco/separador grosso e não roubar conteúdo.
+        local sideMin = small and 92 or 118
+        local sideMax = small and 145 or 170
+        local side = math.clamp(math.floor(w * (small and 0.24 or 0.20)), sideMin, sideMax)
 
-        local desiredContentW = math.min(MIN_CONTENT_W, math.max(300, w - sideMin - 15))
+        local desiredContentW = math.min(MIN_CONTENT_W, math.max(260, w - sideMin - 15))
         if (w - side - 15) < desiredContentW then
             side = math.max(sideMin, w - 15 - desiredContentW)
-        end
-
-        -- Garante altura útil para Header + SubTabs + conteúdo.
-        local minTotalH = math.min(maxH, 65 + 105 + MIN_CONTENT_H)
-        if h < minTotalH then
-            h = minTotalH
         end
 
         return math.floor(w), math.floor(h), math.floor(side)
@@ -559,8 +553,10 @@ function zZzUILibrary:CreateWindow(options)
     SidebarBg.Size = UDim2.new(0, SIDE_W, 1, -65)
     SidebarBg.Position = UDim2.new(0, 0, 0, 65)
     -- Fundo final da sidebar: roxo mais claro na parte de baixo
-    SidebarBg.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
+    SidebarBg.BackgroundColor3 = C.Header
+    SidebarBg.BackgroundTransparency = 0
     SidebarBg.BorderSizePixel = 0
+    RefColor("Header", SidebarBg, "BackgroundColor3")
 
     local SideTopGrad = Instance.new("Frame", SidebarBg)
     SideTopGrad.Size = UDim2.new(1, 0, 1, 0)
@@ -576,16 +572,15 @@ function zZzUILibrary:CreateWindow(options)
     sGrad.Rotation = 90
     sGrad.Transparency = NumberSequence.new({
         NumberSequenceKeypoint.new(0.00, 0.00),
-        NumberSequenceKeypoint.new(0.50, 0.00),
-        NumberSequenceKeypoint.new(0.72, 0.35),
-        NumberSequenceKeypoint.new(1.00, 1.00),
+        NumberSequenceKeypoint.new(1.00, 0.00),
     })
     local SidebarLine = Instance.new("Frame", Main)
     SidebarLine.Size = UDim2.new(0, 1, 1, -65)
     SidebarLine.Position = UDim2.new(0, SIDE_W, 0, 65)
     SidebarLine.BackgroundColor3 = C.Border
-    SidebarLine.BackgroundTransparency = 0.4
+    SidebarLine.BackgroundTransparency = 0.15
     SidebarLine.BorderSizePixel = 0
+    SidebarLine.ZIndex = 30
     RefColor("Border", SidebarLine, "BackgroundColor3")
 
     local Sidebar = Instance.new("ScrollingFrame", SidebarBg)
