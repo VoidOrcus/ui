@@ -436,6 +436,9 @@ function zZzUILibrary:CreateWindow(options)
         gem       = "rbxassetid://128667193028529",
         sword     = "rbxassetid://76346343106130",
         egg       = "rbxassetid://84626835210454",
+        meter     = "rbxassetid://75388852105237",
+        reset_time = "rbxassetid://100766294667886",
+        scanner = "rbxassetid://72718429447577",
     }
     if options.Icons then
         for key, value in pairs(options.Icons) do
