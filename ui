@@ -224,7 +224,7 @@ function zZzUILibrary:CreateWindow(options)
             delBtn.Size = UDim2.new(0, 32, 0, 24)
             delBtn.Position = UDim2.new(1, -44, 0.5, -12)
             delBtn.BackgroundColor3 = Color3.fromRGB(190, 45, 65)
-            delBtn.Text = "✕"
+            delBtn.Text = "X"
             delBtn.TextColor3 = C.Text
             delBtn.Font = Enum.Font.GothamBold
             delBtn.TextSize = 13
@@ -303,6 +303,13 @@ function zZzUILibrary:CreateWindow(options)
         ArrowDown = "rbxassetid://80384425738237",
         Copy      = "rbxassetid://109353702840731",
         Save      = "rbxassetid://136594059453087",
+        Gem       = "rbxassetid://128667193028529",
+        Sword     = "rbxassetid://76346343106130",
+        Egg       = "rbxassetid://84626835210454",
+        gem       = "rbxassetid://128667193028529",
+        sword     = "rbxassetid://76346343106130",
+        egg       = "rbxassetid://84626835210454",
+        scanner   = "rbxassetid://72718429447577",
     }
     if options.Icons then
         for key, value in pairs(options.Icons) do
@@ -542,14 +549,32 @@ function zZzUILibrary:CreateWindow(options)
         Tween(Bubble, {Size=UDim2.new(0,56,0,56)}, 0.35, Enum.EasingStyle.Back)
     end)
 
-    Bubble.MouseButton1Click:Connect(function()
-        if bMoved then return end
+    local function ShowMainWindow()
         Tween(Bubble, {Size=UDim2.new(0,0,0,0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
         task.wait(0.18)
         Bubble.Visible = false
         Main.Size = UDim2.new(0,WIN_W,0,0); Main.Visible = true
         Tween(Main, {Size=UDim2.new(0,WIN_W,0,WIN_H)}, 0.35, Enum.EasingStyle.Quint)
         Tween(Glow, {ImageTransparency=0.5}, 0.35)
+    end
+
+    local function HideMainWindow()
+        Tween(Glow, {ImageTransparency=1}, 0.28)
+        Tween(Main, {Size=UDim2.new(0,WIN_W,0,0)}, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        task.wait(0.32)
+        Main.Visible = false
+        Main.Size = UDim2.new(0,WIN_W,0,WIN_H)
+        Bubble.Size = UDim2.new(0,0,0,0); Bubble.Visible = true
+        Tween(Bubble, {Size=UDim2.new(0,56,0,56)}, 0.35, Enum.EasingStyle.Back)
+    end
+
+    local function ToggleWindowVisibility()
+        if Main.Visible then HideMainWindow() else ShowMainWindow() end
+    end
+
+    Bubble.MouseButton1Click:Connect(function()
+        if bMoved then return end
+        ShowMainWindow()
     end)
 
     -- ── 3. SIDEBAR ──
@@ -911,8 +936,8 @@ function zZzUILibrary:CreateWindow(options)
             ContentArea.GroupTransparency = 0
             ContentArea.Visible = false
 
-            local CONTENT_GAP = 8
-            local INFO_H = 56
+            local CONTENT_GAP = 12
+            local INFO_H = 92
             local TOP_PAD = 5
             local BOTTOM_PAD = 8
             local InfoBox = nil
@@ -1038,7 +1063,7 @@ function zZzUILibrary:CreateWindow(options)
                 local minH = math.min(MIN_H, availableH)
                 local finalH = math.clamp(contentH, minH, availableH)
 
-                MainBox.Size = UDim2.new(1, -60, 0, finalH)
+                MainBox.Size = UDim2.new(1, -40, 0, finalH)
                 InnerClip.CanvasSize = UDim2.new(0, 0, 0, contentH)
 
                 if contentH > finalH then
@@ -1280,17 +1305,29 @@ function zZzUILibrary:CreateWindow(options)
                 InfoTitle.TextXAlignment = Enum.TextXAlignment.Left
                 RefColor("Primary", InfoTitle, "TextColor3")
 
-                local InfoCardsLayout = Instance.new("Frame", InfoBox)
-                InfoCardsLayout.Size = UDim2.new(1, 0, 1, -26)
-                InfoCardsLayout.Position = UDim2.new(0, 0, 0, 26)
+                local InfoCardsLayout = Instance.new("ScrollingFrame", InfoBox)
+                InfoCardsLayout.Size = UDim2.new(1, -16, 1, -30)
+                InfoCardsLayout.Position = UDim2.new(0, 8, 0, 26)
                 InfoCardsLayout.BackgroundTransparency = 1
+                InfoCardsLayout.BorderSizePixel = 0
+                InfoCardsLayout.ScrollBarThickness = 2
+                InfoCardsLayout.ScrollingDirection = Enum.ScrollingDirection.X
+                InfoCardsLayout.CanvasSize = UDim2.new(0, 0, 0, 0)
+                InfoCardsLayout.ClipsDescendants = true
                 local I_Lay = Instance.new("UIListLayout", InfoCardsLayout)
                 I_Lay.FillDirection = Enum.FillDirection.Horizontal
                 I_Lay.Padding = UDim.new(0, 8)
-                I_Lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                I_Lay.HorizontalAlignment = Enum.HorizontalAlignment.Left
                 I_Lay.VerticalAlignment = Enum.VerticalAlignment.Center
+                local I_Pad = Instance.new("UIPadding", InfoCardsLayout)
+                I_Pad.PaddingLeft = UDim.new(0, 4)
+                I_Pad.PaddingRight = UDim.new(0, 4)
+                I_Lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                    InfoCardsLayout.CanvasSize = UDim2.new(0, I_Lay.AbsoluteContentSize.X + 12, 0, 0)
+                end)
                 subObj.InfoLayout = InfoCardsLayout
                 subObj._infoBox = InfoBox
+                subObj._infoHeight = INFO_H
             end
 
             -- ══════════════════════════════════════════════════
@@ -1636,6 +1673,7 @@ function zZzUILibrary:CreateWindow(options)
                     end
                 end
                 table.insert(Registry.toggles, regEntry)
+                return regEntry
             end
 
             -- ══════════════════════════════════════════════════
@@ -1947,7 +1985,7 @@ function zZzUILibrary:CreateWindow(options)
                     if self._updateCanvas then task.defer(self._updateCanvas) end
                 end
                 local card=Instance.new("Frame",self.InfoLayout)
-                card.Size=UDim2.new(0,88,0,42)
+                card.Size=UDim2.new(0,112,0,54)
                 card.BackgroundColor3=Color3.fromRGB(22,16,32)
                 card.BorderSizePixel=0
                 Instance.new("UICorner",card).CornerRadius=UDim.new(0,8)
@@ -1956,7 +1994,7 @@ function zZzUILibrary:CreateWindow(options)
 
                 local ico=Instance.new("ImageLabel",card)
                 ico.Size=UDim2.new(0,18,0,18)
-                ico.Position=UDim2.new(0.5,-9,0,4)
+                ico.Position=UDim2.new(0.5,-9,0,6)
                 ico.BackgroundTransparency=1
                 ico.Image=iconId
                 ico.ScaleType=Enum.ScaleType.Fit
@@ -1964,14 +2002,14 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("TextSub",ico,"ImageColor3")
 
                 local t1=Instance.new("TextLabel",card)
-                t1.Size=UDim2.new(1,0,0,11); t1.Position=UDim2.new(0,0,0,21)
+                t1.Size=UDim2.new(1,-8,0,13); t1.Position=UDim2.new(0,4,0,27)
                 t1.BackgroundTransparency=1; t1.Text=title; t1.TextColor3=C.TextSub
-                t1.Font=Enum.Font.Gotham; t1.TextSize=9
+                t1.Font=Enum.Font.Gotham; t1.TextSize=10
                 t1.TextXAlignment=Enum.TextXAlignment.Center
                 RefColor("TextSub",t1,"TextColor3")
 
                 local t2=Instance.new("TextLabel",card)
-                t2.Size=UDim2.new(1,0,0,13); t2.Position=UDim2.new(0,0,0,31)
+                t2.Size=UDim2.new(1,-8,0,15); t2.Position=UDim2.new(0,4,0,39)
                 t2.BackgroundTransparency=1; t2.Text=value; t2.TextColor3=C.Primary
                 t2.Font=Enum.Font.GothamBold; t2.TextSize=12
                 t2.TextXAlignment=Enum.TextXAlignment.Center
@@ -1984,14 +2022,13 @@ function zZzUILibrary:CreateWindow(options)
             -- ── DROPDOWN (CORRIGIDO) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateDropdown(title, desc, options, default, cb)
-                local selected = default or options[1]
+                options = options or {}
+                local selected = default or options[1] or "None"
                 local isOpen   = false
                 local ITEM_H   = 28
                 local PADDING  = 6
-                local totalOptH = #options * (ITEM_H + 3) + PADDING * 2
-                local CLOSED_H = 52
+                local CLOSED_H = 56
 
-                -- Frame externo com organização automática
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, CLOSED_H)
                 f.BackgroundColor3 = C.Card
@@ -2005,30 +2042,27 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Primary", ddStroke, "Color")
                 self:_registerSmartItem(f, "dropdown", 1)
 
-                -- Título (ocupa toda a largura na parte superior)
                 local tLbl = Instance.new("TextLabel", f)
                 tLbl.Size = UDim2.new(1, -16, 0, 16)
-                tLbl.Position = UDim2.new(0, 12, 0, 8)
+                tLbl.Position = UDim2.new(0, 12, 0, 7)
                 tLbl.BackgroundTransparency = 1; tLbl.Text = title
                 tLbl.TextColor3 = C.Text; tLbl.Font = Enum.Font.GothamBold
                 tLbl.TextSize = 12; tLbl.TextXAlignment = 0
                 tLbl.ZIndex = 11
                 RefColor("Text", tLbl, "TextColor3")
 
-                -- Subtítulo (abaixo do título)
                 local dLbl = Instance.new("TextLabel", f)
                 dLbl.Size = UDim2.new(1, -16, 0, 11)
-                dLbl.Position = UDim2.new(0, 12, 0, 26)
-                dLbl.BackgroundTransparency = 1; dLbl.Text = desc
+                dLbl.Position = UDim2.new(0, 12, 0, 24)
+                dLbl.BackgroundTransparency = 1; dLbl.Text = desc or ""
                 dLbl.TextColor3 = C.TextSub; dLbl.Font = Enum.Font.Gotham
                 dLbl.TextSize = 10; dLbl.TextXAlignment = 0
                 dLbl.ZIndex = 11
                 RefColor("TextSub", dLbl, "TextColor3")
 
-                -- Botão selector (abaixo do texto, na parte inferior do card)
                 local selBtn = Instance.new("TextButton", f)
-                selBtn.Size = UDim2.new(1, -24, 0, 24)
-                selBtn.Position = UDim2.new(0, 12, 1, -30)
+                selBtn.Size = UDim2.new(1, -24, 0, 22)
+                selBtn.Position = UDim2.new(0, 12, 1, -27)
                 selBtn.BackgroundColor3 = C.Dark
                 selBtn.Text = ""
                 selBtn.AutoButtonColor = false
@@ -2044,7 +2078,7 @@ function zZzUILibrary:CreateWindow(options)
                 selLbl.Size = UDim2.new(1, -30, 1, 0)
                 selLbl.Position = UDim2.new(0, 10, 0, 0)
                 selLbl.BackgroundTransparency = 1
-                selLbl.Text = selected
+                selLbl.Text = tostring(selected)
                 selLbl.TextColor3 = C.Text; selLbl.Font = Enum.Font.GothamSemibold
                 selLbl.TextSize = 11; selLbl.TextXAlignment = 0
                 selLbl.ZIndex = 12
@@ -2060,19 +2094,19 @@ function zZzUILibrary:CreateWindow(options)
                 chevronImg.ZIndex = 12
                 RefColor("Primary", chevronImg, "ImageColor3")
 
-                -- Container de opções (abre abaixo do selBtn)
-                local optContainer = Instance.new("Frame", f)
-                optContainer.Size = UDim2.new(1, -24, 0, 0)
-                optContainer.Position = UDim2.new(0, 12, 1, -26)
+                -- Popup no ScreenGui para sobrepor MainBox, ScrollingFrames e Contents.
+                local optContainer = Instance.new("Frame", ScreenGui)
+                optContainer.Size = UDim2.new(0, 0, 0, 0)
+                optContainer.Position = UDim2.new(0, 0, 0, 0)
                 optContainer.BackgroundColor3 = C.Dark
                 optContainer.BorderSizePixel = 0
                 optContainer.Visible = false
                 optContainer.ClipsDescendants = true
-                optContainer.ZIndex = 50
+                optContainer.ZIndex = 5000
                 Instance.new("UICorner", optContainer).CornerRadius = UDim.new(0, 8)
                 RefColor("Dark", optContainer, "BackgroundColor3")
                 local ocS = Instance.new("UIStroke", optContainer)
-                ocS.Color = C.Primary; ocS.Transparency = 0.4; ocS.Thickness = 1
+                ocS.Color = C.Primary; ocS.Transparency = 0.35; ocS.Thickness = 1
                 RefColor("Primary", ocS, "Color")
 
                 local optScroll = Instance.new("ScrollingFrame", optContainer)
@@ -2080,6 +2114,8 @@ function zZzUILibrary:CreateWindow(options)
                 optScroll.BackgroundTransparency = 1
                 optScroll.ScrollBarThickness = 2
                 optScroll.BorderSizePixel = 0
+                optScroll.ZIndex = 5001
+                optScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 
                 local optLayout = Instance.new("UIListLayout", optScroll)
                 optLayout.Padding = UDim.new(0, 3)
@@ -2088,33 +2124,68 @@ function zZzUILibrary:CreateWindow(options)
                 ocPad.PaddingTop = UDim.new(0, PADDING); ocPad.PaddingBottom = UDim.new(0, PADDING)
                 ocPad.PaddingLeft = UDim.new(0, PADDING); ocPad.PaddingRight = UDim.new(0, PADDING)
 
+                local optionButtons = {}
+                local function refreshOptions()
+                    for _, row in ipairs(optionButtons) do
+                        local isMatch = row.Value == selected
+                        row.Button.BackgroundColor3 = isMatch and Color3.fromRGB(35,25,55) or C.Dark
+                        row.Dot.BackgroundColor3 = isMatch and C.Primary or Color3.fromRGB(60,50,80)
+                        row.Label.TextColor3 = isMatch and C.Text or C.TextSub
+                    end
+                end
+
+                local function closeDropdown()
+                    if not isOpen then return end
+                    isOpen = false
+                    Tween(chevronImg, {Rotation = 0}, 0.15)
+                    Tween(optContainer, {Size = UDim2.new(0, optContainer.AbsoluteSize.X, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+                    task.delay(0.2, function() if not isOpen then optContainer.Visible = false end end)
+                end
+
+                local function positionPopup()
+                    local pos = selBtn.AbsolutePosition
+                    local size = selBtn.AbsoluteSize
+                    local screenSize = ScreenGui.AbsoluteSize
+                    local popupH = math.min((#options * (ITEM_H + 3)) + PADDING * 2, 170)
+                    local x = math.clamp(pos.X, 4, math.max(4, screenSize.X - size.X - 4))
+                    local y = pos.Y + size.Y + 4
+                    if y + popupH > screenSize.Y - 6 then
+                        y = math.max(6, pos.Y - popupH - 4)
+                    end
+                    optContainer.Position = UDim2.new(0, x, 0, y)
+                    optContainer.Size = UDim2.new(0, size.X, 0, optContainer.AbsoluteSize.Y)
+                    return size.X, popupH
+                end
+
                 for _, opt in ipairs(options) do
                     local item = Instance.new("TextButton", optScroll)
                     item.Size = UDim2.new(1, 0, 0, ITEM_H)
-                    item.BackgroundColor3 = opt == selected and Color3.fromRGB(35,25,55) or C.Dark
+                    item.BackgroundColor3 = C.Dark
                     item.Text = ""; item.AutoButtonColor = false
                     item.BorderSizePixel = 0
-                    item.ZIndex = 51
+                    item.ZIndex = 5002
                     Instance.new("UICorner", item).CornerRadius = UDim.new(0, 5)
 
                     local dot = Instance.new("Frame", item)
                     dot.Size = UDim2.new(0, 6, 0, 6)
                     dot.Position = UDim2.new(0, 8, 0.5, -3)
-                    dot.BackgroundColor3 = opt == selected and C.Primary or Color3.fromRGB(60,50,80)
+                    dot.BackgroundColor3 = Color3.fromRGB(60,50,80)
                     dot.BorderSizePixel = 0
-                    dot.ZIndex = 52
+                    dot.ZIndex = 5003
                     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
                     local optLbl = Instance.new("TextLabel", item)
-                    optLbl.Size = UDim2.new(1, -22, 1, 0)
+                    optLbl.Size = UDim2.new(1, -26, 1, 0)
                     optLbl.Position = UDim2.new(0, 20, 0, 0)
                     optLbl.BackgroundTransparency = 1
-                    optLbl.Text = opt
-                    optLbl.TextColor3 = opt == selected and C.Text or C.TextSub
+                    optLbl.Text = tostring(opt)
+                    optLbl.TextColor3 = C.TextSub
                     optLbl.Font = Enum.Font.GothamMedium
                     optLbl.TextSize = 10; optLbl.TextXAlignment = 0
                     optLbl.TextTruncate = Enum.TextTruncate.AtEnd
-                    optLbl.ZIndex = 52
+                    optLbl.ZIndex = 5003
+
+                    table.insert(optionButtons, {Button = item, Dot = dot, Label = optLbl, Value = opt})
 
                     item.MouseEnter:Connect(function()
                         if opt ~= selected then Tween(item, {BackgroundColor3 = Color3.fromRGB(30,22,46)}, 0.1) end
@@ -2122,84 +2193,52 @@ function zZzUILibrary:CreateWindow(options)
                     item.MouseLeave:Connect(function()
                         if opt ~= selected then Tween(item, {BackgroundColor3 = C.Dark}, 0.1) end
                     end)
-
                     item.MouseButton1Click:Connect(function()
                         selected = opt
-                        selLbl.Text = opt
-                        for _, c2 in ipairs(optScroll:GetChildren()) do
-                            if c2:IsA("TextButton") then
-                                local d2 = c2:FindFirstChildWhichIsA("Frame")
-                                local l2 = c2:FindFirstChildWhichIsA("TextLabel")
-                                if d2 then d2.BackgroundColor3 = Color3.fromRGB(60,50,80) end
-                                if l2 then l2.TextColor3 = C.TextSub end
-                                c2.BackgroundColor3 = C.Dark
-                            end
-                        end
-                        dot.BackgroundColor3 = C.Primary
-                        optLbl.TextColor3 = C.Text
-                        item.BackgroundColor3 = Color3.fromRGB(35,25,55)
-                        isOpen = false
-                        Tween(chevronImg, {Rotation = 0}, 0.15)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                        task.delay(0.2, function() optContainer.Visible = false end)
-                        if cb then cb(opt) end
+                        selLbl.Text = tostring(opt)
+                        refreshOptions()
+                        closeDropdown()
+                        if cb then task.spawn(cb, opt) end
                     end)
                 end
+                refreshOptions()
 
                 optLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
                     optScroll.CanvasSize = UDim2.new(0, 0, 0, optLayout.AbsoluteContentSize.Y + (PADDING*2))
                 end)
 
                 selBtn.MouseButton1Click:Connect(function()
-                    isOpen = not isOpen
                     if isOpen then
+                        closeDropdown()
+                    else
+                        isOpen = true
+                        local w, h = positionPopup()
+                        optContainer.Size = UDim2.new(0, w, 0, 0)
                         optContainer.Visible = true
                         Tween(chevronImg, {Rotation = 180}, 0.2)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, math.min(totalOptH, 150))}, 0.22, Enum.EasingStyle.Quint)
-                    else
-                        Tween(chevronImg, {Rotation = 0}, 0.15)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                        task.delay(0.2, function() optContainer.Visible = false end)
+                        Tween(optContainer, {Size = UDim2.new(0, w, 0, h)}, 0.22, Enum.EasingStyle.Quint)
                     end
                 end)
 
                 UIS.InputBegan:Connect(function(input)
                     if isOpen and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
                         local mPos = UIS:GetMouseLocation()
-                        local fPos = selBtn.AbsolutePosition
-                        local fSize = selBtn.AbsoluteSize
-                        local optPos = optContainer.AbsolutePosition
-                        local optSize = optContainer.AbsoluteSize
-
-                        local inF = mPos.X >= fPos.X and mPos.X <= fPos.X + fSize.X and mPos.Y >= fPos.Y and mPos.Y <= fPos.Y + fSize.Y
-                        local inOpt = mPos.X >= optPos.X and mPos.X <= optPos.X + optSize.X and mPos.Y >= optPos.Y and mPos.Y <= optPos.Y + optSize.Y
-
-                        if not inF and not inOpt then
-                            isOpen = false
-                            Tween(chevronImg, {Rotation = 0}, 0.15)
-                            Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                            task.delay(0.2, function() optContainer.Visible = false end)
-                        end
+                        local sPos, sSize = selBtn.AbsolutePosition, selBtn.AbsoluteSize
+                        local oPos, oSize = optContainer.AbsolutePosition, optContainer.AbsoluteSize
+                        local inSel = mPos.X >= sPos.X and mPos.X <= sPos.X + sSize.X and mPos.Y >= sPos.Y and mPos.Y <= sPos.Y + sSize.Y
+                        local inOpt = mPos.X >= oPos.X and mPos.X <= oPos.X + oSize.X and mPos.Y >= oPos.Y and mPos.Y <= oPos.Y + oSize.Y
+                        if not inSel and not inOpt then closeDropdown() end
                     end
                 end)
 
                 return {
                     getValue = function() return selected end,
                     setValue = function(v)
-                        selected = v; selLbl.Text = v
-                        for _, c2 in ipairs(optScroll:GetChildren()) do
-                            if c2:IsA("TextButton") then
-                                local d2 = c2:FindFirstChildWhichIsA("Frame")
-                                local l2 = c2:FindFirstChildWhichIsA("TextLabel")
-                                if d2 and l2 then
-                                    local isMatch = l2.Text == v
-                                    d2.BackgroundColor3 = isMatch and C.Primary or Color3.fromRGB(60,50,80)
-                                    l2.TextColor3 = isMatch and C.Text or C.TextSub
-                                    c2.BackgroundColor3 = isMatch and Color3.fromRGB(35,25,55) or C.Dark
-                                end
-                            end
-                        end
+                        selected = v
+                        selLbl.Text = tostring(v)
+                        refreshOptions()
                     end,
+                    close = closeDropdown,
                 }
             end
 
@@ -2256,6 +2295,7 @@ function zZzUILibrary:CreateWindow(options)
     Window.Registry = Registry
     Window.Saves = Saves
     Window.Tabs = Tabs
+    Window.ToggleVisibility = ToggleWindowVisibility
 
     function Window:RegisterIcon(name, assetId)
         Icons[name] = assetId
@@ -2375,7 +2415,7 @@ function zZzUILibrary:CreateWindow(options)
         options = options or {}
         local TabConfig = options.Tab or CreateTab(options.Name or "Config", options.Icon or Icons.Config, options.Description or "Save, load and customize your setup.")
         local SubCfgSave   = TabConfig:AddSubTab("Config")
-        local SubCfgColors = TabConfig:AddSubTab("Colors")
+        local SubCfgFont   = TabConfig:AddSubTab("Font")
 
         -- ── LEFT: painel de salvar ──
         do
@@ -2525,445 +2565,198 @@ function zZzUILibrary:CreateWindow(options)
         end
 
         -- ═══════════════════════════════════════════════════════
-        -- ── 9. CONFIG TAB: sub-tab COLORS ──
-        -- (REMOVIDO Accent Color; mantidos apenas: Primary, TextSub, Border, BgMain, Header)
+        -- ── 9. CONFIG TAB: KEY INFO + HIDE GUI KEYBIND + FONT DROPDOWN
         -- ═══════════════════════════════════════════════════════
 
-        local function MakeColorSectionLabel(parent, text, subData, side)
-            if side == "left" then
-                subData._leftItems = subData._leftItems + 1
-            else
-                subData._rightItems = subData._rightItems + 1
-            end
-            subData._rebalance()
-
-            local f = Instance.new("Frame", parent)
-            f.Size = UDim2.new(1, 0, 0, 22)
-            f.BackgroundTransparency = 1
-            local l = Instance.new("TextLabel", f)
-            l.Size = UDim2.new(1, 0, 1, 0)
-            l.BackgroundTransparency = 1
-            l.Text = text
-            l.TextColor3 = C.Primary
-            l.Font = Enum.Font.GothamBlack
-            l.TextSize = 11
-            l.TextXAlignment = 0
-            RefColor("Primary", l, "TextColor3")
+        local function trimText(v)
+            return tostring(v or ""):gsub("^%s*(.-)%s*$", "%1")
         end
 
-        MakeColorSectionLabel(SubCfgColors.Left,  "FIXED THEME",  SubCfgColors, "left")
-        MakeColorSectionLabel(SubCfgColors.Right, "UI LOCKED",     SubCfgColors, "right")
+        local function localHasFS()
+            return type(readfile) == "function" and type(isfile) == "function"
+        end
 
-        local fixedNotice = Instance.new("TextLabel", SubCfgColors.Left)
-        fixedNotice.Size = UDim2.new(1, 0, 0, 44)
-        fixedNotice.BackgroundTransparency = 1
-        fixedNotice.Text = "Logo e cores da interface são fixas.\nUse ColorPicker apenas nos seus conteúdos, como ESP Fill."
-        fixedNotice.TextColor3 = C.TextSub
-        fixedNotice.Font = Enum.Font.GothamMedium
-        fixedNotice.TextSize = 10
-        fixedNotice.TextWrapped = true
-        fixedNotice.TextXAlignment = Enum.TextXAlignment.Left
-        fixedNotice.TextYAlignment = Enum.TextYAlignment.Top
-        RefColor("TextSub", fixedNotice, "TextColor3")
+        local function parseJunkieDate(val)
+            if type(val) == "number" then return val end
+            if type(val) == "string" then
+                local y, m, d, h, min, sec = val:match("(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)")
+                if y and m and d and h and min and sec then
+                    local t1 = os.time()
+                    local offset = os.difftime(t1, os.time(os.date("!*t", t1)))
+                    return os.time({year = y, month = m, day = d, hour = h, min = min, sec = sec}) + offset
+                end
+                return tonumber(val) or 0
+            end
+            return 0
+        end
 
-        -- Esquerda: apenas Primary Color (removido Accent)
-        -- Interface fixa: Primary Color removido/desativado.
+        local function readKeyInfoFromFiles()
+            local info = options.KeyInfo or {}
+            local expireTime = tonumber(info.ExpireTime or info.expireTime) or 0
+            local isPremium = info.IsPremium == true or info.isPremium == true
+            local keyType = info.KeyType or info.Type or nil
 
-        -- Fonts: fica dentro de Config > Colors para trocar a fonte da UI inteira.
-        do
-            SubCfgColors._leftItems = SubCfgColors._leftItems + 1
-            SubCfgColors._rebalance()
-
-            local fontTitle = Instance.new("TextLabel", SubCfgColors.Left)
-            fontTitle.Size = UDim2.new(1, 0, 0, 22)
-            fontTitle.BackgroundTransparency = 1
-            fontTitle.Text = "FONTS"
-            fontTitle.TextColor3 = C.Primary
-            fontTitle.Font = UI_FONT
-            fontTitle.TextSize = 11
-            fontTitle.TextXAlignment = Enum.TextXAlignment.Left
-            RefColor("Primary", fontTitle, "TextColor3")
-
-            local fontGrid = Instance.new("Frame", SubCfgColors.Left)
-            fontGrid.Size = UDim2.new(1, 0, 0, 102)
-            fontGrid.BackgroundTransparency = 1
-
-            local grid = Instance.new("UIGridLayout", fontGrid)
-            grid.CellSize = UDim2.new(0.5, -4, 0, 30)
-            grid.CellPadding = UDim2.new(0, 8, 0, 6)
-            grid.SortOrder = Enum.SortOrder.LayoutOrder
-
-            for i, data in ipairs(FontOptions) do
-                local btn = Instance.new("TextButton", fontGrid)
-                btn.Size = UDim2.new(0, 0, 0, 30)
-                btn.BackgroundColor3 = C.Card
-                btn.Text = data.Name
-                btn.TextColor3 = C.TextSub
-                btn.Font = data.Font
-                btn.TextSize = 10
-                btn.AutoButtonColor = false
-                btn.BorderSizePixel = 0
-                btn.LayoutOrder = i
-                Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-
-                local st = Instance.new("UIStroke", btn)
-                st.Color = C.Border
-                st.Transparency = 0.45
-                RefColor("Border", st, "Color")
-
-                table.insert(FontButtonRefs, {Name = data.Name, Button = btn, Stroke = st})
-
-                btn.MouseButton1Click:Connect(function()
-                    SetUIFont(data.Name)
+            if localHasFS() then
+                pcall(function()
+                    if expireTime == 0 and isfile("SentinelLibrary/Bin/ApexTime.cfg") then
+                        expireTime = parseJunkieDate(trimText(readfile("SentinelLibrary/Bin/ApexTime.cfg")))
+                    end
+                end)
+                pcall(function()
+                    if isfile("SentinelLibrary/Bin/ApexPremium.cfg") then
+                        local raw = string.lower(readfile("SentinelLibrary/Bin/ApexPremium.cfg"))
+                        if raw:find("true") then isPremium = true end
+                    end
                 end)
             end
 
-            RefreshFontButtons()
+            if expireTime == 0 or expireTime > (os.time() + 315360000) then
+                isPremium = true
+            end
+
+            if not keyType then
+                keyType = isPremium and "Premium" or "Free"
+            end
+
+            return {
+                ExpireTime = expireTime,
+                IsPremium = isPremium,
+                KeyType = keyType,
+            }
         end
 
-        -- Direita: apenas MainBG, HeaderBG, Border/Lines, Subtitle
+        local function makeMiniInfoCard(parent, title, value, iconId)
+            local card = Instance.new("Frame", parent)
+            card.Size = UDim2.new(1, 0, 0, 48)
+            card.BackgroundColor3 = C.Card
+            card.BorderSizePixel = 0
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+            RefColor("Card", card, "BackgroundColor3")
+            local st = Instance.new("UIStroke", card)
+            st.Color = C.Border; st.Transparency = 0.45
+            RefColor("Border", st, "Color")
+
+            local ico = Instance.new("ImageLabel", card)
+            ico.Size = UDim2.new(0, 22, 0, 22)
+            ico.Position = UDim2.new(0, 10, 0.5, -11)
+            ico.BackgroundTransparency = 1
+            ico.Image = iconId or Icons.Gem
+            ico.ImageColor3 = C.Primary
+            ico.ScaleType = Enum.ScaleType.Fit
+            RefColor("Primary", ico, "ImageColor3")
+
+            local t = Instance.new("TextLabel", card)
+            t.Size = UDim2.new(1, -46, 0, 15)
+            t.Position = UDim2.new(0, 40, 0, 7)
+            t.BackgroundTransparency = 1
+            t.Text = title
+            t.TextColor3 = C.TextSub
+            t.Font = Enum.Font.GothamMedium
+            t.TextSize = 10
+            t.TextXAlignment = Enum.TextXAlignment.Left
+            RefColor("TextSub", t, "TextColor3")
+
+            local v = Instance.new("TextLabel", card)
+            v.Size = UDim2.new(1, -46, 0, 18)
+            v.Position = UDim2.new(0, 40, 0, 24)
+            v.BackgroundTransparency = 1
+            v.Text = tostring(value or "--")
+            v.TextColor3 = C.Text
+            v.Font = Enum.Font.GothamBold
+            v.TextSize = 13
+            v.TextXAlignment = Enum.TextXAlignment.Left
+            v.TextTruncate = Enum.TextTruncate.AtEnd
+            RefColor("Text", v, "TextColor3")
+            return v
+        end
+
+        -- KEY INFO no meio da página Config.
         do
-            local ActivePopup = nil
+            local keyPanel = Instance.new("Frame")
+            keyPanel.Size = UDim2.new(1, 0, 0, 164)
+            keyPanel.BackgroundColor3 = C.Dark
+            keyPanel.BorderSizePixel = 0
+            Instance.new("UICorner", keyPanel).CornerRadius = UDim.new(0, 10)
+            RefColor("Dark", keyPanel, "BackgroundColor3")
+            local kpS = Instance.new("UIStroke", keyPanel)
+            kpS.Color = C.Border; kpS.Transparency = 0.4
+            RefColor("Border", kpS, "Color")
 
-            local function MakeCompactColorRow(parent, label, colorKey)
-                SubCfgColors._rightItems = SubCfgColors._rightItems + 1
-                SubCfgColors._rebalance()
+            keyPanel.Parent = SubCfgSave.Center
+            keyPanel.LayoutOrder = 999
+            SubCfgSave.Center.Visible = true
+            SubCfgSave._centerItems = SubCfgSave._centerItems + 1
+            if SubCfgSave._updateCanvas then task.defer(SubCfgSave._updateCanvas) end
 
-                local row = Instance.new("Frame", parent)
-                row.Size = UDim2.new(1, 0, 0, 44)
-                row.BackgroundColor3 = C.Card
-                row.BorderSizePixel = 0
-                row.ClipsDescendants = false
-                Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
-                RefColor("Card", row, "BackgroundColor3")
-                local rS = Instance.new("UIStroke", row); rS.Color = C.Border; rS.Transparency = 0.4
-                RefColor("Border", rS, "Color")
+            local title = Instance.new("TextLabel", keyPanel)
+            title.Size = UDim2.new(1, -20, 0, 24)
+            title.Position = UDim2.new(0, 10, 0, 8)
+            title.BackgroundTransparency = 1
+            title.Text = "KEY INFO"
+            title.TextColor3 = C.Primary
+            title.Font = Enum.Font.GothamBlack
+            title.TextSize = 11
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            RefColor("Primary", title, "TextColor3")
 
-                local preview = Instance.new("Frame", row)
-                preview.Size = UDim2.new(0, 26, 0, 26)
-                preview.Position = UDim2.new(0, 9, 0.5, -13)
-                preview.BackgroundColor3 = C[colorKey]
-                preview.BorderSizePixel = 0
-                Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 5)
-                RefColor(colorKey, preview, "BackgroundColor3")
+            local cardHolder = Instance.new("Frame", keyPanel)
+            cardHolder.Size = UDim2.new(1, -20, 1, -40)
+            cardHolder.Position = UDim2.new(0, 10, 0, 34)
+            cardHolder.BackgroundTransparency = 1
+            local list = Instance.new("UIListLayout", cardHolder)
+            list.SortOrder = Enum.SortOrder.LayoutOrder
+            list.Padding = UDim.new(0, 8)
 
-                local lbl = Instance.new("TextLabel", row)
-                lbl.Size = UDim2.new(1, -110, 1, 0)
-                lbl.Position = UDim2.new(0, 44, 0, 0)
-                lbl.BackgroundTransparency = 1
-                lbl.Text = label
-                lbl.TextColor3 = C.Text
-                lbl.Font = Enum.Font.GothamSemibold
-                lbl.TextSize = 11
-                lbl.TextXAlignment = 0
-                RefColor("Text", lbl, "TextColor3")
+            local initialInfo = readKeyInfoFromFiles()
+            local typeLbl = makeMiniInfoCard(cardHolder, "Key Type", initialInfo.KeyType, Icons.Gem)
+            local timerLbl = makeMiniInfoCard(cardHolder, "Expires In", initialInfo.IsPremium and "Infinity" or "--:--:--", Icons.Egg)
 
-                local editBtn = Instance.new("TextButton", row)
-                editBtn.Size = UDim2.new(0, 52, 0, 24)
-                editBtn.Position = UDim2.new(1, -60, 0.5, -12)
-                editBtn.BackgroundColor3 = Color3.fromRGB(162, 89, 255)
-                editBtn.Text = "PICK"
-                editBtn.TextColor3 = C.Text
-                editBtn.Font = Enum.Font.GothamBold
-                editBtn.TextSize = 10
-                editBtn.BorderSizePixel = 0
-                Instance.new("UICorner", editBtn).CornerRadius = UDim.new(0, 5)
-
-                local popup = Instance.new("Frame", ScreenGui)
-                popup.Size = UDim2.new(0, 220, 0, 240)
-                popup.BackgroundColor3 = C.Dark
-                popup.BorderSizePixel = 0
-                popup.ClipsDescendants = false
-                popup.Visible = false
-                popup.ZIndex = 100
-                Instance.new("UICorner", popup).CornerRadius = UDim.new(0, 10)
-                RefColor("Dark", popup, "BackgroundColor3")
-                local pS = Instance.new("UIStroke", popup); pS.Color = C.Primary; pS.Transparency = 0.3; pS.Thickness = 1
-                RefColor("Primary", pS, "Color")
-
-                local pTitle = Instance.new("TextLabel", popup)
-                pTitle.Size = UDim2.new(1, -16, 0, 20)
-                pTitle.Position = UDim2.new(0, 10, 0, 6)
-                pTitle.BackgroundTransparency = 1
-                pTitle.Text = label
-                pTitle.TextColor3 = C.Text
-                pTitle.Font = Enum.Font.GothamBold
-                pTitle.TextSize = 11
-                pTitle.TextXAlignment = 0
-                pTitle.ZIndex = 101
-                RefColor("Text", pTitle, "TextColor3")
-
-                local closeBtn = Instance.new("TextButton", popup)
-                closeBtn.Size = UDim2.new(0, 20, 0, 20)
-                closeBtn.Position = UDim2.new(1, -26, 0, 6)
-                closeBtn.BackgroundColor3 = Color3.fromRGB(190, 45, 65)
-                closeBtn.Text = "✕"
-                closeBtn.TextColor3 = C.Text
-                closeBtn.Font = Enum.Font.GothamBold
-                closeBtn.TextSize = 11
-                closeBtn.BorderSizePixel = 0
-                closeBtn.ZIndex = 102
-                Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
-
-                local currentH, currentS, currentV = C[colorKey]:ToHSV()
-
-                local SVBox = Instance.new("TextButton", popup)
-                SVBox.Size = UDim2.new(0, 130, 0, 130)
-                SVBox.Position = UDim2.new(0, 10, 0, 32)
-                SVBox.BackgroundColor3 = Color3.fromHSV(currentH, 1, 1)
-                SVBox.AutoButtonColor = false
-                SVBox.Text = ""
-                SVBox.BorderSizePixel = 0
-                SVBox.ZIndex = 101
-                Instance.new("UICorner", SVBox).CornerRadius = UDim.new(0, 7)
-
-                local wOv = Instance.new("Frame", SVBox)
-                wOv.Size = UDim2.fromScale(1,1); wOv.BackgroundColor3 = Color3.new(1,1,1); wOv.BorderSizePixel = 0; wOv.ZIndex = 102
-                Instance.new("UICorner", wOv).CornerRadius = UDim.new(0, 7)
-                local wGrad = Instance.new("UIGradient", wOv); wGrad.Transparency = NumberSequence.new(0,1); wGrad.Rotation = 0
-
-                local bOv = Instance.new("Frame", SVBox)
-                bOv.Size = UDim2.fromScale(1,1); bOv.BackgroundColor3 = Color3.new(0,0,0); bOv.BorderSizePixel = 0; bOv.ZIndex = 103
-                Instance.new("UICorner", bOv).CornerRadius = UDim.new(0, 7)
-                local bGrad = Instance.new("UIGradient", bOv); bGrad.Transparency = NumberSequence.new(1,0); bGrad.Rotation = 90
-
-                local svCursor = Instance.new("Frame", SVBox)
-                svCursor.Size = UDim2.new(0,10,0,10)
-                svCursor.Position = UDim2.new(currentS,-5,1-currentV,-5)
-                svCursor.BackgroundColor3 = Color3.new(1,1,1); svCursor.BorderSizePixel = 0; svCursor.ZIndex = 104
-                Instance.new("UICorner", svCursor).CornerRadius = UDim.new(1,0)
-                Instance.new("UIStroke", svCursor).Color = Color3.new(0,0,0)
-
-                local HueStrip = Instance.new("TextButton", popup)
-                HueStrip.Size = UDim2.new(0, 14, 0, 130)
-                HueStrip.Position = UDim2.new(0, 148, 0, 32)
-                HueStrip.BackgroundColor3 = Color3.new(1,1,1)
-                HueStrip.AutoButtonColor = false
-                HueStrip.Text = ""
-                HueStrip.BorderSizePixel = 0
-                HueStrip.ZIndex = 101
-                Instance.new("UICorner", HueStrip).CornerRadius = UDim.new(0, 5)
-                local hGrad2 = Instance.new("UIGradient", HueStrip); hGrad2.Rotation = 90
-                hGrad2.Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0,    Color3.fromHSV(0,1,1)),
-                    ColorSequenceKeypoint.new(0.16, Color3.fromHSV(0.16,1,1)),
-                    ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1,1)),
-                    ColorSequenceKeypoint.new(0.5,  Color3.fromHSV(0.5,1,1)),
-                    ColorSequenceKeypoint.new(0.66, Color3.fromHSV(0.66,1,1)),
-                    ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1,1)),
-                    ColorSequenceKeypoint.new(1,    Color3.fromHSV(1,1,1)),
-                })
-
-                local hCursor2 = Instance.new("Frame", HueStrip)
-                hCursor2.Size = UDim2.new(1,4,0,5)
-                hCursor2.Position = UDim2.new(0,-2,currentH,-2)
-                hCursor2.BackgroundColor3 = Color3.new(1,1,1); hCursor2.BorderSizePixel = 0; hCursor2.ZIndex = 102
-                Instance.new("UICorner", hCursor2).CornerRadius = UDim.new(0,2)
-                Instance.new("UIStroke", hCursor2).Color = Color3.new(0,0,0)
-
-                local prevRow = Instance.new("Frame", popup)
-                prevRow.Size = UDim2.new(1,-20,0,28)
-                prevRow.Position = UDim2.new(0,10,0,170)
-                prevRow.BackgroundTransparency = 1
-                prevRow.ZIndex = 101
-
-                local prevBox = Instance.new("Frame", prevRow)
-                prevBox.Size = UDim2.new(0,28,1,0)
-                prevBox.BackgroundColor3 = C[colorKey]
-                prevBox.BorderSizePixel = 0
-                prevBox.ZIndex = 102
-                Instance.new("UICorner", prevBox).CornerRadius = UDim.new(0,5)
-
-                local hexBox = Instance.new("TextBox", prevRow)
-                hexBox.Size = UDim2.new(1,-36,1,0)
-                hexBox.Position = UDim2.new(0,36,0,0)
-                hexBox.BackgroundColor3 = C.BgMain
-                hexBox.TextColor3 = C.Text
-                hexBox.Font = Enum.Font.GothamSemibold
-                hexBox.TextSize = 10
-                hexBox.Text = "#"..ColorToHex(C[colorKey])
-                hexBox.BorderSizePixel = 0
-                hexBox.ZIndex = 102
-                Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0,4)
-                local hxS2 = Instance.new("UIStroke", hexBox); hxS2.Color = C.Border
-                RefColor("BgMain", hexBox, "BackgroundColor3")
-                RefColor("Text", hexBox, "TextColor3")
-                RefColor("Border", hxS2, "Color")
-
-                local copyBtnP = Instance.new("TextButton", hexBox)
-                copyBtnP.Size = UDim2.new(0,28,1,0)
-                copyBtnP.Position = UDim2.new(1,-28,0,0)
-                copyBtnP.BackgroundTransparency = 1
-                copyBtnP.Text = ""
-                copyBtnP.ZIndex = 103
-
-                local copyIconP = Instance.new("ImageLabel",copyBtnP)
-                copyIconP.Size = UDim2.new(0,12,0,12)
-                copyIconP.Position = UDim2.new(0.5,-6,0.5,-6)
-                copyIconP.BackgroundTransparency = 1
-                copyIconP.Image = Icons.Copy
-                copyIconP.ImageColor3 = C.TextSub
-                copyIconP.ZIndex = 104
-                RefColor("TextSub",copyIconP,"ImageColor3")
-
-                copyBtnP.MouseButton1Click:Connect(function()
-                    pcall(function() setclipboard(hexBox.Text) end)
-                end)
-
-                local function MakeRGBLabel(parent, xOff, lStr, val)
-                    local fr = Instance.new("Frame", parent)
-                    fr.Size = UDim2.new(0,55,0,24)
-                    fr.Position = UDim2.new(0,xOff,0,204)
-                    fr.BackgroundColor3 = C.BgMain
-                    fr.BorderSizePixel = 0
-                    fr.ZIndex = 101
-                    Instance.new("UICorner", fr).CornerRadius = UDim.new(0,5)
-                    RefColor("BgMain", fr, "BackgroundColor3")
-                    local ll = Instance.new("TextLabel", fr)
-                    ll.Size = UDim2.new(0,14,1,0)
-                    ll.BackgroundTransparency = 1
-                    ll.Text = lStr
-                    ll.TextColor3 = C.TextSub
-                    ll.Font = Enum.Font.GothamBold
-                    ll.TextSize = 9
-                    ll.ZIndex = 102
-                    RefColor("TextSub", ll, "TextColor3")
-                    local vl = Instance.new("TextLabel", fr)
-                    vl.Size = UDim2.new(1,-14,1,0)
-                    vl.Position = UDim2.new(0,14,0,0)
-                    vl.BackgroundTransparency = 1
-                    vl.Text = tostring(val)
-                    vl.TextColor3 = C.Text
-                    vl.Font = Enum.Font.GothamMedium
-                    vl.TextSize = 9
-                    vl.ZIndex = 102
-                    RefColor("Text", vl, "TextColor3")
-                    return vl
-                end
-                local initR = math.floor(C[colorKey].R*255)
-                local initG = math.floor(C[colorKey].G*255)
-                local initB = math.floor(C[colorKey].B*255)
-                local rLbl = MakeRGBLabel(popup, 10,  "R", initR)
-                local gLbl = MakeRGBLabel(popup, 72,  "G", initG)
-                local bLbl = MakeRGBLabel(popup, 134, "B", initB)
-
-                local function UpdatePopupColor()
-                    local c = Color3.fromHSV(currentH, currentS, currentV)
-                    SVBox.BackgroundColor3 = Color3.fromHSV(currentH, 1, 1)
-                    prevBox.BackgroundColor3 = c
-                    preview.BackgroundColor3 = c
-                    hexBox.Text = "#"..ColorToHex(c)
-                    svCursor.Position = UDim2.new(currentS,-5,1-currentV,-5)
-                    hCursor2.Position = UDim2.new(0,-2,currentH,-2)
-                    rLbl.Text = tostring(math.floor(c.R*255))
-                    gLbl.Text = tostring(math.floor(c.G*255))
-                    bLbl.Text = tostring(math.floor(c.B*255))
-                    SetPaletteColor(colorKey, c)
-                end
-
-                local cpReg = { id = NewRegId("cp"), paletteKey = colorKey }
-                cpReg.setColor = function(c)
-                    local h,s,v2 = c:ToHSV()
-                    currentH=h; currentS=s; currentV=v2
-                    UpdatePopupColor()
-                end
-                table.insert(Registry.colorpickers, cpReg)
-
-                local function PositionPopup()
-                    local btnPos = editBtn.AbsolutePosition
-                    local px = btnPos.X - 230
-                    local py = btnPos.Y - 100
-                    local sw = ScreenGui.AbsoluteSize.X
-                    local sh = ScreenGui.AbsoluteSize.Y
-                    px = math.clamp(px, 5, sw - 225)
-                    py = math.clamp(py, 5, sh - 245)
-                    popup.Position = UDim2.new(0, px, 0, py)
-                end
-
-                local popOpen = false
-                local svDrag2, hDrag2 = false, false
-
-                editBtn.MouseButton1Click:Connect(function()
-                    popOpen = not popOpen
-                    if popOpen then
-                        if ActivePopup and ActivePopup ~= popup then ActivePopup.Visible = false end
-                        ActivePopup = popup
-                        PositionPopup()
-                        local h,s,v2 = C[colorKey]:ToHSV()
-                        currentH=h; currentS=s; currentV=v2
-                        UpdatePopupColor()
-                        popup.Visible = true
+            task.spawn(function()
+                while ScreenGui and ScreenGui.Parent and timerLbl and timerLbl.Parent do
+                    local info = readKeyInfoFromFiles()
+                    typeLbl.Text = tostring(info.KeyType or (info.IsPremium and "Premium" or "Free"))
+                    if info.IsPremium then
+                        timerLbl.Text = "Infinity"
+                        timerLbl.TextColor3 = C.Primary
                     else
-                        popup.Visible = false
-                        if ActivePopup == popup then ActivePopup = nil end
-                    end
-                end)
-
-                closeBtn.MouseButton1Click:Connect(function()
-                    popOpen = false
-                    popup.Visible = false
-                    if ActivePopup == popup then ActivePopup = nil end
-                end)
-
-                local popDragging, popDragStart, popStartPos
-                pTitle.InputBegan:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                        popDragging=true; popDragStart=i.Position; popStartPos=popup.Position
-                    end
-                end)
-                UIS.InputChanged:Connect(function(i)
-                    if popDragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-                        local d = i.Position - popDragStart
-                        popup.Position = UDim2.new(0, popStartPos.X.Offset+d.X, 0, popStartPos.Y.Offset+d.Y)
-                    end
-                end)
-                UIS.InputEnded:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                        popDragging=false
-                    end
-                end)
-
-                SVBox.InputBegan:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                        svDrag2=true
-                        currentS=math.clamp((i.Position.X-SVBox.AbsolutePosition.X)/SVBox.AbsoluteSize.X,0,1)
-                        currentV=1-math.clamp((i.Position.Y-SVBox.AbsolutePosition.Y)/SVBox.AbsoluteSize.Y,0,1)
-                        UpdatePopupColor()
-                    end
-                end)
-                HueStrip.InputBegan:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                        hDrag2=true
-                        currentH=math.clamp((i.Position.Y-HueStrip.AbsolutePosition.Y)/HueStrip.AbsoluteSize.Y,0,1)
-                        UpdatePopupColor()
-                    end
-                end)
-                UIS.InputEnded:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                        svDrag2=false; hDrag2=false
-                    end
-                end)
-                UIS.InputChanged:Connect(function(i)
-                    if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then
-                        if svDrag2 then
-                            currentS=math.clamp((i.Position.X-SVBox.AbsolutePosition.X)/SVBox.AbsoluteSize.X,0,1)
-                            currentV=1-math.clamp((i.Position.Y-SVBox.AbsolutePosition.Y)/SVBox.AbsoluteSize.Y,0,1)
-                            UpdatePopupColor()
-                        elseif hDrag2 then
-                            currentH=math.clamp((i.Position.Y-HueStrip.AbsolutePosition.Y)/HueStrip.AbsoluteSize.Y,0,1)
-                            UpdatePopupColor()
+                        local left = (tonumber(info.ExpireTime) or 0) - os.time()
+                        if left <= 0 then
+                            timerLbl.Text = "00:00:00"
+                            timerLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+                        else
+                            timerLbl.Text = string.format("%02d:%02d:%02d", math.floor(left / 3600), math.floor((left % 3600) / 60), left % 60)
+                            timerLbl.TextColor3 = C.Text
                         end
                     end
-                end)
-            end
-
-            -- Apenas 4 cores nas linhas compactas (removidos Card, Dark, Header)
-            -- Interface fixa: linhas de cor da UI removidas/desativadas.
-            -- MakeCompactColorRow(SubCfgColors.Right, "Subtitle Text",  "TextSub")
-            -- MakeCompactColorRow(SubCfgColors.Right, "Border / Lines", "Border")
-            -- MakeCompactColorRow(SubCfgColors.Right, "Main BG",        "BgMain")
-            -- MakeCompactColorRow(SubCfgColors.Right, "Header BG",      "Header")
+                    task.wait(1)
+                end
+            end)
         end
+
+        -- Toggle da tecla de esconder/mostrar a UI.
+        do
+            local hideReg = SubCfgSave:CreateToggle(
+                "Hide Key Gui",
+                "Press the selected key to hide/show the hub. Default: Delete.",
+                true,
+                function() end
+            )
+            if hideReg and hideReg.setKeybind then
+                hideReg.setKeybind(options.HideKeyDefault or "Delete")
+                hideReg.isHideGui = true
+            end
+        end
+
+        -- Subpágina Font: dropdown organizado com lista sobrepondo tudo.
+        do
+            local names = {}
+            for _, data in ipairs(FontOptions) do table.insert(names, data.Name) end
+            local fontDrop = SubCfgFont:CreateDropdown("UI Font", "Change the font used by the entire interface.", names, SelectedFontName, function(value)
+                SetUIFont(value)
+            end)
+            SubCfgFont._fontDropdown = fontDrop
+        end
+
         return TabConfig
     end
 
@@ -2972,7 +2765,15 @@ function zZzUILibrary:CreateWindow(options)
         if gpe then return end
         if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
         for _, reg in ipairs(Registry.toggles) do
-            if reg.keybind and input.KeyCode == reg.keybind then
+            if reg.isHideGui and reg.keybind and input.KeyCode == reg.keybind then
+                if not reg.getState or reg.getState() ~= false then
+                    ToggleWindowVisibility()
+                end
+                return
+            end
+        end
+        for _, reg in ipairs(Registry.toggles) do
+            if (not reg.isHideGui) and reg.keybind and input.KeyCode == reg.keybind then
                 reg.toggle()
             end
         end
