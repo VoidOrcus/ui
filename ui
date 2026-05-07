@@ -427,7 +427,7 @@ function zZzUILibrary:CreateWindow(options)
         ESP       = "rbxassetid://100931844532141",
         Player    = "rbxassetid://138543769865014",
         Minimize  = "rbxassetid://83995894962001",
-        ArrowDown = "rbxassetid://80384425738237",
+        ArrowDown = "rbxassetid://119592566318925",
         Copy      = "rbxassetid://109353702840731",
         Save      = "rbxassetid://136594059453087",
         Gem       = "rbxassetid://128667193028529",
