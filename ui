@@ -365,6 +365,10 @@ function zZzUILibrary:CreateWindow(options)
 
     WIN_W, WIN_H, SIDE_W = CalculateResponsive(Viewport)
 
+    -- Espaço real entre a sidebar e a área de conteúdo.
+    -- Antes era +15, por isso parecia torto/grosso.
+    local SIDEBAR_DIVIDER_GAP = 1
+
     local ICON_INACTIVE = Color3.fromRGB(90, 80, 110)
     local ICON_ACTIVE   = Color3.fromRGB(207, 115, 255)
 
@@ -556,6 +560,7 @@ function zZzUILibrary:CreateWindow(options)
     SidebarBg.BackgroundColor3 = C.Header
     SidebarBg.BackgroundTransparency = 0
     SidebarBg.BorderSizePixel = 0
+    SidebarBg.ClipsDescendants = true
     RefColor("Header", SidebarBg, "BackgroundColor3")
 
     local SideTopGrad = Instance.new("Frame", SidebarBg)
@@ -578,7 +583,7 @@ function zZzUILibrary:CreateWindow(options)
     SidebarLine.Size = UDim2.new(0, 1, 1, -65)
     SidebarLine.Position = UDim2.new(0, SIDE_W, 0, 65)
     SidebarLine.BackgroundColor3 = C.Border
-    SidebarLine.BackgroundTransparency = 0.15
+    SidebarLine.BackgroundTransparency = 0.35
     SidebarLine.BorderSizePixel = 0
     SidebarLine.ZIndex = 30
     RefColor("Border", SidebarLine, "BackgroundColor3")
@@ -602,8 +607,8 @@ function zZzUILibrary:CreateWindow(options)
 
     -- ── 4. CONTENT ──
     local PagesContainer = Instance.new("Frame", Main)
-    PagesContainer.Size = UDim2.new(1, -(SIDE_W + 15), 1, -65)
-    PagesContainer.Position = UDim2.new(0, SIDE_W + 15, 0, 65)
+    PagesContainer.Size = UDim2.new(1, -(SIDE_W + SIDEBAR_DIVIDER_GAP), 1, -65)
+    PagesContainer.Position = UDim2.new(0, SIDE_W + SIDEBAR_DIVIDER_GAP, 0, 65)
     PagesContainer.BackgroundTransparency = 1
     PagesContainer.ClipsDescendants = true
 
@@ -637,8 +642,8 @@ function zZzUILibrary:CreateWindow(options)
         SidebarLine.Size = UDim2.new(0, 1, 1, -65)
         SidebarLine.Position = UDim2.new(0, SIDE_W, 0, 65)
 
-        PagesContainer.Size = UDim2.new(1, -(SIDE_W + 15), 1, -65)
-        PagesContainer.Position = UDim2.new(0, SIDE_W + 15, 0, 65)
+        PagesContainer.Size = UDim2.new(1, -(SIDE_W + SIDEBAR_DIVIDER_GAP), 1, -65)
+        PagesContainer.Position = UDim2.new(0, SIDE_W + SIDEBAR_DIVIDER_GAP, 0, 65)
     end
 
     if workspace.CurrentCamera then
