@@ -439,6 +439,8 @@ function zZzUILibrary:CreateWindow(options)
         meter     = "rbxassetid://75388852105237",
         reset_time = "rbxassetid://100766294667886",
         scanner = "rbxassetid://72718429447577",
+        thunder = "rbxassetid://90363537119675",
+        lock = "rbxassetid://72352321874164",
     }
     if options.Icons then
         for key, value in pairs(options.Icons) do
