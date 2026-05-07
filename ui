@@ -1437,8 +1437,34 @@ function zZzUILibrary:CreateWindow(options)
                 local I_Pad = Instance.new("UIPadding", InfoCardsLayout)
                 I_Pad.PaddingLeft = UDim.new(0, 2)
                 I_Pad.PaddingRight = UDim.new(0, 2)
+
+                -- Centraliza os CONTENTS quando tiver poucos cards.
+                -- Ex.: 1 card fica no meio; 2 cards ficam divididos no centro;
+                -- se passar da largura visível, volta para a esquerda e permite scroll horizontal normal.
+                local function UpdateInfoCardsCentering()
+                    local contentW = I_Lay.AbsoluteContentSize.X
+                    local visibleW = InfoCardsLayout.AbsoluteSize.X
+                    if visibleW <= 0 then return end
+
+                    if contentW > 0 and contentW < visibleW then
+                        local pad = math.floor((visibleW - contentW) / 2)
+                        I_Lay.HorizontalAlignment = Enum.HorizontalAlignment.Left
+                        I_Pad.PaddingLeft = UDim.new(0, math.max(2, pad))
+                        I_Pad.PaddingRight = UDim.new(0, math.max(2, pad))
+                        InfoCardsLayout.CanvasPosition = Vector2.new(0, 0)
+                    else
+                        I_Lay.HorizontalAlignment = Enum.HorizontalAlignment.Left
+                        I_Pad.PaddingLeft = UDim.new(0, 2)
+                        I_Pad.PaddingRight = UDim.new(0, 2)
+                    end
+                end
+
+                I_Lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateInfoCardsCentering)
+                InfoCardsLayout:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateInfoCardsCentering)
+
                 subObj.InfoLayout = InfoCardsLayout
                 subObj._infoBox = InfoBox
+                subObj._updateInfoCardsCentering = UpdateInfoCardsCentering
             end
 
             -- ══════════════════════════════════════════════════
@@ -2124,6 +2150,12 @@ function zZzUILibrary:CreateWindow(options)
                 t2.Font=Enum.Font.GothamBold; t2.TextSize=12
                 t2.TextXAlignment=Enum.TextXAlignment.Center
                 RefColor("Primary",t2,"TextColor3")
+
+                task.defer(function()
+                    if self._updateInfoCardsCentering then
+                        self._updateInfoCardsCentering()
+                    end
+                end)
 
                 return t2
             end
