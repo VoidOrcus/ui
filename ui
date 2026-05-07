@@ -197,21 +197,64 @@ function zZzUILibrary:CreateWindow(options)
         return string.format("%02d:%02d:%02d", h, m, sec)
     end
 
+    local function ParseJunkieDateForUI(val)
+        if type(val) == "number" then return val end
+        if type(val) == "string" then
+            local y, mo, d, h, mi, sec = val:match("(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)")
+            if y and mo and d and h and mi and sec then
+                local targetTime = os.time({year=y, month=mo, day=d, hour=h, min=mi, sec=sec})
+                local t1 = os.time()
+                local t2 = os.time(os.date("!*t", t1))
+                local offset = os.difftime(t1, t2)
+                return targetTime + offset
+            end
+            return tonumber(val) or 0
+        end
+        return 0
+    end
+
     local function ReadKeyInfo()
         local g = getgenv and getgenv() or _G
         local info = options.KeyInfo or g.zZzKeyInfo or g.JunkieKeyInfo or g.KeyInfo
-        if type(info) ~= "table" then
-            return nil
+        if type(info) == "table" then
+            return info
         end
-        return info
+
+        -- Fallback igual ao código antigo: lê os arquivos gerados pelo key system.
+        local expireTime = 0
+        local isPremium = false
+        if type(readfile) == "function" and type(isfile) == "function" then
+            pcall(function()
+                if isfile("SentinelLibrary/Bin/ApexTime.cfg") then
+                    local rawTime = string.gsub(readfile("SentinelLibrary/Bin/ApexTime.cfg"), "^%s*(.-)%s*$", "%1")
+                    expireTime = ParseJunkieDateForUI(rawTime)
+                end
+            end)
+            pcall(function()
+                if isfile("SentinelLibrary/Bin/ApexPremium.cfg") then
+                    isPremium = string.match(string.lower(readfile("SentinelLibrary/Bin/ApexPremium.cfg")), "true") ~= nil
+                end
+            end)
+        end
+        if expireTime == 0 or expireTime > (os.time() + 315360000) then
+            isPremium = true
+        end
+        return {
+            Type = isPremium and "Premium" or "Free",
+            ExpireTime = expireTime,
+            IsPremium = isPremium,
+        }
     end
 
+    local LastKeyInfo = nil
     local function ApplyKeyInfo(info)
         info = info or ReadKeyInfo()
         if not info then return end
-        local keyType = info.Type or info.type or info.Plan or info.plan or (info.IsPremium or info.isPremium and "Premium" or "Free")
+        LastKeyInfo = info
+        local keyType = info.Type or info.type or info.Plan or info.plan
         local premium = info.IsPremium == true or info.isPremium == true or tostring(keyType):lower():find("premium") ~= nil
         local expire = info.ExpireTime or info.expireTime or info.ExpiresAt or info.expiresAt
+        if not keyType then keyType = premium and "Premium" or "Free" end
         local timeText = info.TimeLeft or info.timeLeft or info.Time or info.time
         if not timeText then
             if premium or expire == 0 or (tonumber(expire) and tonumber(expire) > os.time() + 315360000) then
@@ -230,6 +273,15 @@ function zZzUILibrary:CreateWindow(options)
             KeyTimerLabelRef.TextColor3 = tostring(timeText) == "00:00:00" and Color3.fromRGB(255,80,80) or C.Primary
         end
     end
+
+    task.spawn(function()
+        while ScreenGui and ScreenGui.Parent do
+            task.wait(1)
+            if KeyTimerLabelRef then
+                ApplyKeyInfo(LastKeyInfo or ReadKeyInfo())
+            end
+        end
+    end)
 
     -- ═══════════════════════════════════════════════════════
     -- 📋 REGISTRY
@@ -992,8 +1044,8 @@ function zZzUILibrary:CreateWindow(options)
             ContentArea.GroupTransparency = 0
             ContentArea.Visible = false
 
-            local CONTENT_GAP = 12
-            local INFO_H = 92
+            local CONTENT_GAP = 16
+            local INFO_H = 120
             local TOP_PAD = 5
             local BOTTOM_PAD = 8
             local InfoBox = nil
@@ -1362,8 +1414,8 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Primary", InfoTitle, "TextColor3")
 
                 local InfoCardsLayout = Instance.new("ScrollingFrame", InfoBox)
-                InfoCardsLayout.Size = UDim2.new(1, -16, 1, -28)
-                InfoCardsLayout.Position = UDim2.new(0, 8, 0, 26)
+                InfoCardsLayout.Size = UDim2.new(1, -16, 1, -34)
+                InfoCardsLayout.Position = UDim2.new(0, 8, 0, 30)
                 InfoCardsLayout.BackgroundTransparency = 1
                 InfoCardsLayout.BorderSizePixel = 0
                 InfoCardsLayout.ScrollBarThickness = 0
@@ -2036,7 +2088,7 @@ function zZzUILibrary:CreateWindow(options)
                     if self._updateCanvas then task.defer(self._updateCanvas) end
                 end
                 local card=Instance.new("Frame",self.InfoLayout)
-                card.Size=UDim2.new(0,112,0,54)
+                card.Size=UDim2.new(0,128,0,70)
                 card.BackgroundColor3=Color3.fromRGB(22,16,32)
                 card.BorderSizePixel=0
                 Instance.new("UICorner",card).CornerRadius=UDim.new(0,8)
@@ -2045,7 +2097,7 @@ function zZzUILibrary:CreateWindow(options)
 
                 local ico=Instance.new("ImageLabel",card)
                 ico.Size=UDim2.new(0,18,0,18)
-                ico.Position=UDim2.new(0.5,-9,0,6)
+                ico.Position=UDim2.new(0.5,-9,0,8)
                 ico.BackgroundTransparency=1
                 ico.Image=iconId
                 ico.ScaleType=Enum.ScaleType.Fit
@@ -2053,14 +2105,14 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("TextSub",ico,"ImageColor3")
 
                 local t1=Instance.new("TextLabel",card)
-                t1.Size=UDim2.new(1,-8,0,13); t1.Position=UDim2.new(0,4,0,25)
+                t1.Size=UDim2.new(1,-8,0,15); t1.Position=UDim2.new(0,4,0,32)
                 t1.BackgroundTransparency=1; t1.Text=title; t1.TextColor3=C.TextSub
                 t1.Font=Enum.Font.Gotham; t1.TextSize=9
                 t1.TextXAlignment=Enum.TextXAlignment.Center
                 RefColor("TextSub",t1,"TextColor3")
 
                 local t2=Instance.new("TextLabel",card)
-                t2.Size=UDim2.new(1,-8,0,15); t2.Position=UDim2.new(0,4,0,38)
+                t2.Size=UDim2.new(1,-8,0,18); t2.Position=UDim2.new(0,4,0,50)
                 t2.BackgroundTransparency=1; t2.Text=value; t2.TextColor3=C.Primary
                 t2.Font=Enum.Font.GothamBold; t2.TextSize=12
                 t2.TextXAlignment=Enum.TextXAlignment.Center
@@ -2073,14 +2125,15 @@ function zZzUILibrary:CreateWindow(options)
             -- ── DROPDOWN (CORRIGIDO) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateDropdown(title, desc, options, default, cb)
-                local selected = default or options[1]
+                options = options or {}
+                local selected = default or options[1] or ""
                 local isOpen   = false
                 local ITEM_H   = 28
                 local PADDING  = 6
                 local totalOptH = #options * (ITEM_H + 3) + PADDING * 2
                 local CLOSED_H = 52
+                local listHeight = math.min(totalOptH, 170)
 
-                -- Frame externo com organização automática
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, CLOSED_H)
                 f.BackgroundColor3 = C.Card
@@ -2094,27 +2147,30 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Primary", ddStroke, "Color")
                 self:_registerSmartItem(f, "dropdown", 1)
 
-                -- Título (ocupa toda a largura na parte superior)
                 local tLbl = Instance.new("TextLabel", f)
                 tLbl.Size = UDim2.new(1, -16, 0, 16)
                 tLbl.Position = UDim2.new(0, 12, 0, 8)
-                tLbl.BackgroundTransparency = 1; tLbl.Text = title
-                tLbl.TextColor3 = C.Text; tLbl.Font = Enum.Font.GothamBold
-                tLbl.TextSize = 12; tLbl.TextXAlignment = 0
+                tLbl.BackgroundTransparency = 1
+                tLbl.Text = title or "Dropdown"
+                tLbl.TextColor3 = C.Text
+                tLbl.Font = Enum.Font.GothamBold
+                tLbl.TextSize = 12
+                tLbl.TextXAlignment = 0
                 tLbl.ZIndex = 11
                 RefColor("Text", tLbl, "TextColor3")
 
-                -- Subtítulo (abaixo do título)
                 local dLbl = Instance.new("TextLabel", f)
                 dLbl.Size = UDim2.new(1, -16, 0, 11)
                 dLbl.Position = UDim2.new(0, 12, 0, 26)
-                dLbl.BackgroundTransparency = 1; dLbl.Text = desc
-                dLbl.TextColor3 = C.TextSub; dLbl.Font = Enum.Font.Gotham
-                dLbl.TextSize = 10; dLbl.TextXAlignment = 0
+                dLbl.BackgroundTransparency = 1
+                dLbl.Text = desc or ""
+                dLbl.TextColor3 = C.TextSub
+                dLbl.Font = Enum.Font.Gotham
+                dLbl.TextSize = 10
+                dLbl.TextXAlignment = 0
                 dLbl.ZIndex = 11
                 RefColor("TextSub", dLbl, "TextColor3")
 
-                -- Botão selector (abaixo do texto, na parte inferior do card)
                 local selBtn = Instance.new("TextButton", f)
                 selBtn.Size = UDim2.new(1, -24, 0, 24)
                 selBtn.Position = UDim2.new(0, 12, 1, -30)
@@ -2133,9 +2189,11 @@ function zZzUILibrary:CreateWindow(options)
                 selLbl.Size = UDim2.new(1, -30, 1, 0)
                 selLbl.Position = UDim2.new(0, 10, 0, 0)
                 selLbl.BackgroundTransparency = 1
-                selLbl.Text = selected
-                selLbl.TextColor3 = C.Text; selLbl.Font = Enum.Font.GothamSemibold
-                selLbl.TextSize = 11; selLbl.TextXAlignment = 0
+                selLbl.Text = tostring(selected)
+                selLbl.TextColor3 = C.Text
+                selLbl.Font = Enum.Font.GothamSemibold
+                selLbl.TextSize = 11
+                selLbl.TextXAlignment = 0
                 selLbl.ZIndex = 12
                 RefColor("Text", selLbl, "TextColor3")
 
@@ -2149,26 +2207,29 @@ function zZzUILibrary:CreateWindow(options)
                 chevronImg.ZIndex = 12
                 RefColor("Primary", chevronImg, "ImageColor3")
 
-                -- Container de opções (abre abaixo do selBtn)
-                local optContainer = Instance.new("Frame", f)
-                optContainer.Size = UDim2.new(1, -24, 0, 0)
-                optContainer.Position = UDim2.new(0, 12, 1, -26)
+                -- A lista aberta é um portal no ScreenGui, então sobrepõe MainBox, Contents, ScrollingFrames e qualquer card.
+                local optContainer = Instance.new("Frame", ScreenGui)
+                optContainer.Size = UDim2.new(0, 0, 0, 0)
+                optContainer.Position = UDim2.new(0, 0, 0, 0)
                 optContainer.BackgroundColor3 = C.Dark
                 optContainer.BorderSizePixel = 0
                 optContainer.Visible = false
                 optContainer.ClipsDescendants = true
-                optContainer.ZIndex = 50
+                optContainer.ZIndex = 10000
                 Instance.new("UICorner", optContainer).CornerRadius = UDim.new(0, 8)
                 RefColor("Dark", optContainer, "BackgroundColor3")
                 local ocS = Instance.new("UIStroke", optContainer)
-                ocS.Color = C.Primary; ocS.Transparency = 0.4; ocS.Thickness = 1
+                ocS.Color = C.Primary; ocS.Transparency = 0.35; ocS.Thickness = 1
                 RefColor("Primary", ocS, "Color")
 
                 local optScroll = Instance.new("ScrollingFrame", optContainer)
                 optScroll.Size = UDim2.new(1, 0, 1, 0)
                 optScroll.BackgroundTransparency = 1
                 optScroll.ScrollBarThickness = 2
+                optScroll.ScrollBarImageColor3 = C.Primary
                 optScroll.BorderSizePixel = 0
+                optScroll.ZIndex = 10001
+                RefColor("Primary", optScroll, "ScrollBarImageColor3")
 
                 local optLayout = Instance.new("UIListLayout", optScroll)
                 optLayout.Padding = UDim.new(0, 3)
@@ -2177,13 +2238,52 @@ function zZzUILibrary:CreateWindow(options)
                 ocPad.PaddingTop = UDim.new(0, PADDING); ocPad.PaddingBottom = UDim.new(0, PADDING)
                 ocPad.PaddingLeft = UDim.new(0, PADDING); ocPad.PaddingRight = UDim.new(0, PADDING)
 
+                local optionButtons = {}
+                local function RefreshOptions()
+                    for _, ref in ipairs(optionButtons) do
+                        local match = ref.Value == selected
+                        ref.Dot.BackgroundColor3 = match and C.Primary or Color3.fromRGB(60,50,80)
+                        ref.Label.TextColor3 = match and C.Text or C.TextSub
+                        ref.Button.BackgroundColor3 = match and Color3.fromRGB(35,25,55) or C.Dark
+                    end
+                end
+
+                local function CloseList()
+                    if not isOpen then return end
+                    isOpen = false
+                    Tween(chevronImg, {Rotation = 0}, 0.15)
+                    Tween(optContainer, {Size = UDim2.new(0, optContainer.AbsoluteSize.X, 0, 0)}, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+                    task.delay(0.18, function()
+                        if not isOpen then optContainer.Visible = false end
+                    end)
+                end
+
+                local function PositionList()
+                    local abs = selBtn.AbsolutePosition
+                    local size = selBtn.AbsoluteSize
+                    local screenSize = ScreenGui.AbsoluteSize
+                    local x = abs.X
+                    local y = abs.Y + size.Y + 4
+                    local w = size.X
+                    local h = listHeight
+                    if y + h > screenSize.Y - 6 then
+                        y = math.max(6, abs.Y - h - 4)
+                    end
+                    if x + w > screenSize.X - 6 then
+                        x = math.max(6, screenSize.X - w - 6)
+                    end
+                    optContainer.Position = UDim2.new(0, x, 0, y)
+                    optContainer.Size = UDim2.new(0, w, 0, isOpen and h or 0)
+                end
+
                 for _, opt in ipairs(options) do
                     local item = Instance.new("TextButton", optScroll)
                     item.Size = UDim2.new(1, 0, 0, ITEM_H)
                     item.BackgroundColor3 = opt == selected and Color3.fromRGB(35,25,55) or C.Dark
-                    item.Text = ""; item.AutoButtonColor = false
+                    item.Text = ""
+                    item.AutoButtonColor = false
                     item.BorderSizePixel = 0
-                    item.ZIndex = 51
+                    item.ZIndex = 10002
                     Instance.new("UICorner", item).CornerRadius = UDim.new(0, 5)
 
                     local dot = Instance.new("Frame", item)
@@ -2191,19 +2291,21 @@ function zZzUILibrary:CreateWindow(options)
                     dot.Position = UDim2.new(0, 8, 0.5, -3)
                     dot.BackgroundColor3 = opt == selected and C.Primary or Color3.fromRGB(60,50,80)
                     dot.BorderSizePixel = 0
-                    dot.ZIndex = 52
+                    dot.ZIndex = 10003
                     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
                     local optLbl = Instance.new("TextLabel", item)
                     optLbl.Size = UDim2.new(1, -22, 1, 0)
                     optLbl.Position = UDim2.new(0, 20, 0, 0)
                     optLbl.BackgroundTransparency = 1
-                    optLbl.Text = opt
+                    optLbl.Text = tostring(opt)
                     optLbl.TextColor3 = opt == selected and C.Text or C.TextSub
                     optLbl.Font = Enum.Font.GothamMedium
-                    optLbl.TextSize = 10; optLbl.TextXAlignment = 0
+                    optLbl.TextSize = 10
+                    optLbl.TextXAlignment = 0
                     optLbl.TextTruncate = Enum.TextTruncate.AtEnd
-                    optLbl.ZIndex = 52
+                    optLbl.ZIndex = 10003
+                    table.insert(optionButtons, {Button = item, Dot = dot, Label = optLbl, Value = opt})
 
                     item.MouseEnter:Connect(function()
                         if opt ~= selected then Tween(item, {BackgroundColor3 = Color3.fromRGB(30,22,46)}, 0.1) end
@@ -2211,44 +2313,35 @@ function zZzUILibrary:CreateWindow(options)
                     item.MouseLeave:Connect(function()
                         if opt ~= selected then Tween(item, {BackgroundColor3 = C.Dark}, 0.1) end
                     end)
-
                     item.MouseButton1Click:Connect(function()
                         selected = opt
-                        selLbl.Text = opt
-                        for _, c2 in ipairs(optScroll:GetChildren()) do
-                            if c2:IsA("TextButton") then
-                                local d2 = c2:FindFirstChildWhichIsA("Frame")
-                                local l2 = c2:FindFirstChildWhichIsA("TextLabel")
-                                if d2 then d2.BackgroundColor3 = Color3.fromRGB(60,50,80) end
-                                if l2 then l2.TextColor3 = C.TextSub end
-                                c2.BackgroundColor3 = C.Dark
-                            end
-                        end
-                        dot.BackgroundColor3 = C.Primary
-                        optLbl.TextColor3 = C.Text
-                        item.BackgroundColor3 = Color3.fromRGB(35,25,55)
-                        isOpen = false
-                        Tween(chevronImg, {Rotation = 0}, 0.15)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                        task.delay(0.2, function() optContainer.Visible = false end)
+                        selLbl.Text = tostring(opt)
+                        RefreshOptions()
+                        CloseList()
                         if cb then cb(opt) end
                     end)
                 end
 
                 optLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                    optScroll.CanvasSize = UDim2.new(0, 0, 0, optLayout.AbsoluteContentSize.Y + (PADDING*2))
+                    optScroll.CanvasSize = UDim2.new(0, 0, 0, optLayout.AbsoluteContentSize.Y + (PADDING * 2))
                 end)
 
                 selBtn.MouseButton1Click:Connect(function()
                     isOpen = not isOpen
                     if isOpen then
+                        PositionList()
                         optContainer.Visible = true
+                        optContainer.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, 0)
                         Tween(chevronImg, {Rotation = 180}, 0.2)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, math.min(totalOptH, 150))}, 0.22, Enum.EasingStyle.Quint)
+                        Tween(optContainer, {Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
                     else
-                        Tween(chevronImg, {Rotation = 0}, 0.15)
-                        Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                        task.delay(0.2, function() optContainer.Visible = false end)
+                        CloseList()
+                    end
+                end)
+
+                UIS.InputChanged:Connect(function(input)
+                    if isOpen and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                        PositionList()
                     end
                 end)
 
@@ -2259,37 +2352,34 @@ function zZzUILibrary:CreateWindow(options)
                         local fSize = selBtn.AbsoluteSize
                         local optPos = optContainer.AbsolutePosition
                         local optSize = optContainer.AbsoluteSize
-
                         local inF = mPos.X >= fPos.X and mPos.X <= fPos.X + fSize.X and mPos.Y >= fPos.Y and mPos.Y <= fPos.Y + fSize.Y
                         local inOpt = mPos.X >= optPos.X and mPos.X <= optPos.X + optSize.X and mPos.Y >= optPos.Y and mPos.Y <= optPos.Y + optSize.Y
-
                         if not inF and not inOpt then
-                            isOpen = false
-                            Tween(chevronImg, {Rotation = 0}, 0.15)
-                            Tween(optContainer, {Size = UDim2.new(1, -24, 0, 0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                            task.delay(0.2, function() optContainer.Visible = false end)
+                            CloseList()
                         end
                     end
                 end)
 
-                return {
+                local api = {
                     getValue = function() return selected end,
                     setValue = function(v)
-                        selected = v; selLbl.Text = v
-                        for _, c2 in ipairs(optScroll:GetChildren()) do
-                            if c2:IsA("TextButton") then
-                                local d2 = c2:FindFirstChildWhichIsA("Frame")
-                                local l2 = c2:FindFirstChildWhichIsA("TextLabel")
-                                if d2 and l2 then
-                                    local isMatch = l2.Text == v
-                                    d2.BackgroundColor3 = isMatch and C.Primary or Color3.fromRGB(60,50,80)
-                                    l2.TextColor3 = isMatch and C.Text or C.TextSub
-                                    c2.BackgroundColor3 = isMatch and Color3.fromRGB(35,25,55) or C.Dark
-                                end
-                            end
+                        selected = v
+                        selLbl.Text = tostring(v)
+                        RefreshOptions()
+                    end,
+                    close = CloseList,
+                    open = function()
+                        if not isOpen then
+                            isOpen = true
+                            PositionList()
+                            optContainer.Visible = true
+                            optContainer.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, 0)
+                            Tween(chevronImg, {Rotation = 180}, 0.2)
+                            Tween(optContainer, {Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
                         end
                     end,
                 }
+                return api
             end
 
             -- ── ANIMAÇÃO SEQUENTIAL SUB-TAB ──
@@ -2403,6 +2493,11 @@ function zZzUILibrary:CreateWindow(options)
 
     function Window:GetKeyTimerLabel()
         return KeyTimerLabelRef
+    end
+
+    function Window:RefreshKeyInfo()
+        ApplyKeyInfo(ReadKeyInfo())
+        return self
     end
 
     function Window:CreateCategory(name)
