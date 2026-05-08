@@ -136,6 +136,9 @@ function zZzUILibrary:CreateWindow(options)
                 ref.Stroke.Color = active and C.Primary or C.Border
                 ref.Stroke.Transparency = active and 0.2 or 0.45
             end
+            if ref.DropdownSync and ref.DropdownSync.setValue then
+                ref.DropdownSync.setValue(SelectedFontName)
+            end
         end
     end
 
@@ -427,7 +430,7 @@ function zZzUILibrary:CreateWindow(options)
         ESP       = "rbxassetid://100931844532141",
         Player    = "rbxassetid://138543769865014",
         Minimize  = "rbxassetid://83995894962001",
-        ArrowDown = "rbxassetid://119592566318925",
+        ArrowDown = "rbxassetid://80384425738237",
         Copy      = "rbxassetid://109353702840731",
         Save      = "rbxassetid://136594059453087",
         Gem       = "rbxassetid://128667193028529",
@@ -2171,8 +2174,8 @@ function zZzUILibrary:CreateWindow(options)
                 local ITEM_H   = 28
                 local PADDING  = 6
                 local totalOptH = #options * (ITEM_H + 3) + PADDING * 2
-                local CLOSED_H = 52
-                local listHeight = math.min(totalOptH, 170)
+                local CLOSED_H = 72 -- mesmo tamanho de um Toggle
+                local listHeight = math.min(totalOptH, 190)
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, CLOSED_H)
@@ -2188,8 +2191,8 @@ function zZzUILibrary:CreateWindow(options)
                 self:_registerSmartItem(f, "dropdown", 1)
 
                 local tLbl = Instance.new("TextLabel", f)
-                tLbl.Size = UDim2.new(1, -16, 0, 16)
-                tLbl.Position = UDim2.new(0, 12, 0, 8)
+                tLbl.Size = UDim2.new(1, -170, 0, 16)
+                tLbl.Position = UDim2.new(0, 12, 0, 10)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Text = title or "Dropdown"
                 tLbl.TextColor3 = C.Text
@@ -2200,20 +2203,23 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Text", tLbl, "TextColor3")
 
                 local dLbl = Instance.new("TextLabel", f)
-                dLbl.Size = UDim2.new(1, -16, 0, 11)
-                dLbl.Position = UDim2.new(0, 12, 0, 26)
+                dLbl.Size = UDim2.new(1, -180, 0, 36)
+                dLbl.Position = UDim2.new(0, 12, 0, 29)
                 dLbl.BackgroundTransparency = 1
                 dLbl.Text = desc or ""
                 dLbl.TextColor3 = C.TextSub
                 dLbl.Font = Enum.Font.Gotham
                 dLbl.TextSize = 10
-                dLbl.TextXAlignment = 0
+                dLbl.TextXAlignment = Enum.TextXAlignment.Left
+                dLbl.TextYAlignment = Enum.TextYAlignment.Top
+                dLbl.TextWrapped = true
+                dLbl.ClipsDescendants = true
                 dLbl.ZIndex = 11
                 RefColor("TextSub", dLbl, "TextColor3")
 
                 local selBtn = Instance.new("TextButton", f)
-                selBtn.Size = UDim2.new(1, -24, 0, 24)
-                selBtn.Position = UDim2.new(0, 12, 1, -30)
+                selBtn.Size = UDim2.new(0, 146, 0, 30)
+                selBtn.Position = UDim2.new(1, -158, 0.5, -15)
                 selBtn.BackgroundColor3 = C.Dark
                 selBtn.Text = ""
                 selBtn.AutoButtonColor = false
@@ -2303,11 +2309,11 @@ function zZzUILibrary:CreateWindow(options)
                     local size = selBtn.AbsoluteSize
                     local screenSize = ScreenGui.AbsoluteSize
                     local x = abs.X
-                    local y = abs.Y + size.Y + 4
+                    local y = abs.Y + size.Y - 1
                     local w = size.X
                     local h = listHeight
                     if y + h > screenSize.Y - 6 then
-                        y = math.max(6, abs.Y - h - 4)
+                        y = math.max(6, abs.Y - h + 1)
                     end
                     if x + w > screenSize.X - 6 then
                         x = math.max(6, screenSize.X - w - 6)
@@ -2371,9 +2377,10 @@ function zZzUILibrary:CreateWindow(options)
                     if isOpen then
                         PositionList()
                         optContainer.Visible = true
-                        optContainer.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, 0)
+                        local openW = optContainer.AbsoluteSize.X > 0 and optContainer.AbsoluteSize.X or selBtn.AbsoluteSize.X
+                        optContainer.Size = UDim2.new(0, openW, 0, 0)
                         Tween(chevronImg, {Rotation = 180}, 0.2)
-                        Tween(optContainer, {Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
+                        Tween(optContainer, {Size = UDim2.new(0, openW, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
                     else
                         CloseList()
                     end
@@ -2413,9 +2420,10 @@ function zZzUILibrary:CreateWindow(options)
                             isOpen = true
                             PositionList()
                             optContainer.Visible = true
-                            optContainer.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, 0)
+                            local openW = optContainer.AbsoluteSize.X > 0 and optContainer.AbsoluteSize.X or selBtn.AbsoluteSize.X
+                            optContainer.Size = UDim2.new(0, openW, 0, 0)
                             Tween(chevronImg, {Rotation = 180}, 0.2)
-                            Tween(optContainer, {Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
+                            Tween(optContainer, {Size = UDim2.new(0, openW, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
                         end
                     end,
                 }
@@ -2940,146 +2948,31 @@ function zZzUILibrary:CreateWindow(options)
 
         -- Fonts: dropdown organizado dentro de Config > Font.
         do
-            SubCfgColors._leftItems = SubCfgColors._leftItems + 1
-            SubCfgColors._rebalance()
-
-            local fontTitle = Instance.new("TextLabel", SubCfgColors.Left)
-            fontTitle.Size = UDim2.new(1, 0, 0, 22)
-            fontTitle.BackgroundTransparency = 1
-            fontTitle.Text = "FONT"
-            fontTitle.TextColor3 = C.Primary
-            fontTitle.Font = UI_FONT
-            fontTitle.TextSize = 11
-            fontTitle.TextXAlignment = Enum.TextXAlignment.Left
-            RefColor("Primary", fontTitle, "TextColor3")
-
-            local drop = Instance.new("TextButton", SubCfgColors.Left)
-            drop.Size = UDim2.new(1, 0, 0, 38)
-            drop.BackgroundColor3 = C.Dark
-            drop.Text = SelectedFontName
-            drop.TextColor3 = C.Text
-            drop.Font = UI_FONT
-            drop.TextSize = 12
-            drop.TextXAlignment = Enum.TextXAlignment.Left
-            drop.AutoButtonColor = false
-            drop.BorderSizePixel = 0
-            Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 8)
-            RefColor("Dark", drop, "BackgroundColor3")
-            RefColor("Text", drop, "TextColor3")
-            local dp = Instance.new("UIPadding", drop)
-            dp.PaddingLeft = UDim.new(0, 12)
-            dp.PaddingRight = UDim.new(0, 34)
-            local ds = Instance.new("UIStroke", drop)
-            ds.Color = C.Border; ds.Transparency = 0.35
-            RefColor("Border", ds, "Color")
-
-            local arrow = Instance.new("TextLabel", drop)
-            arrow.Size = UDim2.new(0, 24, 1, 0)
-            arrow.Position = UDim2.new(1, -28, 0, 0)
-            arrow.BackgroundTransparency = 1
-            arrow.Text = "▼"
-            arrow.TextColor3 = C.Primary
-            arrow.Font = Enum.Font.GothamBold
-            arrow.TextSize = 12
-            arrow.ZIndex = drop.ZIndex + 1
-            RefColor("Primary", arrow, "TextColor3")
-
-            local list = Instance.new("Frame", ScreenGui)
-            list.Size = UDim2.new(0, 220, 0, #FontOptions * 30 + 10)
-            list.BackgroundColor3 = C.Dark
-            list.BorderSizePixel = 0
-            list.Visible = false
-            list.ZIndex = 700
-            list.ClipsDescendants = false
-            Instance.new("UICorner", list).CornerRadius = UDim.new(0, 9)
-            RefColor("Dark", list, "BackgroundColor3")
-            local ls = Instance.new("UIStroke", list)
-            ls.Color = C.Primary; ls.Transparency = 0.25
-            RefColor("Primary", ls, "Color")
-            local ll = Instance.new("UIListLayout", list)
-            ll.SortOrder = Enum.SortOrder.LayoutOrder
-            ll.Padding = UDim.new(0, 2)
-            local lp = Instance.new("UIPadding", list)
-            lp.PaddingTop = UDim.new(0, 5)
-            lp.PaddingBottom = UDim.new(0, 5)
-            lp.PaddingLeft = UDim.new(0, 5)
-            lp.PaddingRight = UDim.new(0, 5)
-
-            local function PositionFontDropdown()
-                local pos = drop.AbsolutePosition
-                local size = drop.AbsoluteSize
-                local sw = ScreenGui.AbsoluteSize.X
-                local sh = ScreenGui.AbsoluteSize.Y
-                local w = math.max(220, size.X)
-                list.Size = UDim2.new(0, w, 0, #FontOptions * 30 + 10)
-                local x = math.clamp(pos.X, 5, sw - w - 5)
-                local y = pos.Y + size.Y + 4
-                if y + list.AbsoluteSize.Y > sh - 5 then
-                    y = math.max(5, pos.Y - list.AbsoluteSize.Y - 4)
-                end
-                list.Position = UDim2.new(0, x, 0, y)
+            local fontNames = {}
+            for _, data in ipairs(FontOptions) do
+                table.insert(fontNames, data.Name)
             end
 
-            local function RefreshFontDropdown()
-                drop.Text = SelectedFontName
-                for _, ref in ipairs(FontButtonRefs) do
-                    if ref.DropdownButton then
-                        local active = ref.Name == SelectedFontName
-                        ref.DropdownButton.BackgroundColor3 = active and C.Primary or C.Card
-                        ref.DropdownButton.TextColor3 = active and C.Text or C.TextSub
-                    end
+            local fontDropdown = SubCfgColors:CreateDropdown(
+                "Font",
+                "Change the entire UI font.",
+                fontNames,
+                SelectedFontName,
+                function(fontName)
+                    SetUIFont(fontName)
+                    RefreshFontButtons()
                 end
-            end
+            )
 
-            for i, data in ipairs(FontOptions) do
-                local btn = Instance.new("TextButton", list)
-                btn.Size = UDim2.new(1, 0, 0, 28)
-                btn.BackgroundColor3 = C.Card
-                btn.Text = data.Name
-                btn.TextColor3 = C.TextSub
-                btn.Font = data.Font
-                btn.TextSize = 11
-                btn.AutoButtonColor = false
-                btn.BorderSizePixel = 0
-                btn.LayoutOrder = i
-                btn.ZIndex = 701
-                Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-                RefColor("Card", btn, "BackgroundColor3")
-
-                table.insert(FontButtonRefs, {Name = data.Name, Button = btn, DropdownButton = btn})
-
-                btn.MouseButton1Click:Connect(function()
-                    SetUIFont(data.Name)
-                    RefreshFontDropdown()
-                    list.Visible = false
-                end)
-            end
-
-            drop.MouseButton1Click:Connect(function()
-                PositionFontDropdown()
-                RefreshFontDropdown()
-                list.Visible = not list.Visible
-            end)
-
-            UIS.InputBegan:Connect(function(input, gpe)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    task.defer(function()
-                        if list.Visible then
-                            local mouse = UIS:GetMouseLocation()
-                            local p = list.AbsolutePosition
-                            local sz = list.AbsoluteSize
-                            local dp2 = drop.AbsolutePosition
-                            local dsz = drop.AbsoluteSize
-                            local inList = mouse.X >= p.X and mouse.X <= p.X + sz.X and mouse.Y >= p.Y and mouse.Y <= p.Y + sz.Y
-                            local inDrop = mouse.X >= dp2.X and mouse.X <= dp2.X + dsz.X and mouse.Y >= dp2.Y and mouse.Y <= dp2.Y + dsz.Y
-                            if not inList and not inDrop then list.Visible = false end
-                        end
-                    end)
-                end
-            end)
-
-            RefreshFontButtons()
-            RefreshFontDropdown()
+            -- Mantém o dropdown sincronizado quando a fonte mudar por save/config.
+            table.insert(FontButtonRefs, {
+                Name = "__FontDropdownSync",
+                Button = {
+                    BackgroundColor3 = C.Card,
+                    TextColor3 = C.Text,
+                },
+                DropdownSync = fontDropdown,
+            })
         end
 
         -- Direita: apenas MainBG, HeaderBG, Border/Lines, Subtitle
