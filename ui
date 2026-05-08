@@ -443,6 +443,7 @@ function zZzUILibrary:CreateWindow(options)
         lock = "rbxassetid://72352321874164",
         water = "rbxassetid://107826809826957",
         meat = "rbxassetid://110412916867683",
+        dna = "rbxassetid://117228697846986",
     }
     if options.Icons then
         for key, value in pairs(options.Icons) do
