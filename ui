@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.1-responsive-content-fix"
+zZzUILibrary.Version = "1.0.2-universal-save-themes"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -170,7 +170,7 @@ function zZzUILibrary:CreateWindow(options)
     local KeyTimerLabelRef = nil
 
     local function ResolveKeyCode(value, fallback)
-        fallback = fallback or Enum.KeyCode.Delete
+        fallback = fallback or Enum.KeyCode.J
         if typeof(value) == "EnumItem" then
             return value
         elseif type(value) == "string" and Enum.KeyCode[value] then
@@ -179,7 +179,7 @@ function zZzUILibrary:CreateWindow(options)
         return fallback
     end
 
-    local HideGuiKey = ResolveKeyCode(options.HideKey or options.HideGuiKey or options.DefaultHideKey or "Delete", Enum.KeyCode.Delete)
+    local HideGuiKey = ResolveKeyCode(options.HideKey or options.HideGuiKey or options.DefaultHideKey or "J", Enum.KeyCode.J)
 
     local function SetHideGuiKey(value)
         HideGuiKey = ResolveKeyCode(value, HideGuiKey)
@@ -303,6 +303,152 @@ function zZzUILibrary:CreateWindow(options)
     local SavesListParent = nil
     local NoSavesLabel    = nil
 
+    -- Persistência real por Universe/GameId:
+    -- Universal_save/<game.GameId>/<config>.txt
+    local SaveFS = {}
+    SaveFS.Root = "Universal_save"
+    SaveFS.UniverseId = tostring((game.GameId and game.GameId ~= 0 and game.GameId) or game.PlaceId or "Universal")
+    SaveFS.Folder = SaveFS.Root .. "/" .. SaveFS.UniverseId
+
+    function SaveFS:Available()
+        return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function" and type(isfolder) == "function" and type(makefolder) == "function"
+    end
+
+    function SaveFS:Ensure()
+        if not self:Available() then return false end
+        pcall(function()
+            if not isfolder(self.Root) then makefolder(self.Root) end
+            if not isfolder(self.Folder) then makefolder(self.Folder) end
+        end)
+        return isfolder(self.Folder)
+    end
+
+    function SaveFS:SafeName(name)
+        name = tostring(name or "Config"):gsub("^%s+", ""):gsub("%s+$", "")
+        if name == "" then name = "Config" end
+        return name:gsub("[\\/:*?\"<>|]", "_")
+    end
+
+    function SaveFS:Path(name)
+        return self.Folder .. "/" .. self:SafeName(name) .. ".txt"
+    end
+
+    function SaveFS:ManifestPath()
+        return self.Folder .. "/__manifest.txt"
+    end
+
+    function SaveFS:ReadManifest()
+        if not self:Ensure() then return {} end
+        local path = self:ManifestPath()
+        if not isfile(path) then return {} end
+        local ok, raw = pcall(readfile, path)
+        if not ok or type(raw) ~= "string" then return {} end
+        local data = self:Decode(raw)
+        return type(data) == "table" and data or {}
+    end
+
+    function SaveFS:WriteManifest(list)
+        if not self:Ensure() then return false end
+        local raw = self:Encode(list or {})
+        if not raw then return false end
+        return pcall(function()
+            writefile(self:ManifestPath(), raw)
+        end)
+    end
+
+    function SaveFS:AddManifest(name)
+        local list = self:ReadManifest()
+        local safeName = tostring(name or "")
+        for _, existing in ipairs(list) do
+            if tostring(existing) == safeName then
+                return self:WriteManifest(list)
+            end
+        end
+        table.insert(list, safeName)
+        return self:WriteManifest(list)
+    end
+
+    function SaveFS:RemoveManifest(name)
+        local list = self:ReadManifest()
+        local safeName = tostring(name or "")
+        for i = #list, 1, -1 do
+            if tostring(list[i]) == safeName then
+                table.remove(list, i)
+            end
+        end
+        return self:WriteManifest(list)
+    end
+
+    function SaveFS:Encode(data)
+        local ok, encoded = pcall(function()
+            return game:GetService("HttpService"):JSONEncode(data)
+        end)
+        return ok and encoded or nil
+    end
+
+    function SaveFS:Decode(raw)
+        local ok, decoded = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(raw)
+        end)
+        return ok and decoded or nil
+    end
+
+    function SaveFS:Write(name, data)
+        if not self:Ensure() then return false end
+        data.name = name
+        data.universeId = self.UniverseId
+        data.placeId = tostring(game.PlaceId or "")
+        local raw = self:Encode(data)
+        if not raw then return false end
+        local ok = pcall(function()
+            writefile(self:Path(name), raw)
+        end)
+        if ok then self:AddManifest(name) end
+        return ok
+    end
+
+    function SaveFS:Read(name)
+        if not self:Ensure() then return nil end
+        local path = self:Path(name)
+        if not isfile(path) then return nil end
+        local ok, raw = pcall(readfile, path)
+        if not ok or type(raw) ~= "string" then return nil end
+        return self:Decode(raw)
+    end
+
+    function SaveFS:Delete(name)
+        if not self:Ensure() then return false end
+        self:RemoveManifest(name)
+        local path = self:Path(name)
+        if type(delfile) == "function" and isfile(path) then return pcall(delfile, path) end
+        return false
+    end
+
+    function SaveFS:LoadAll()
+        if not self:Ensure() then return end
+        for _, saveName in ipairs(self:ReadManifest()) do
+            local data = self:Read(saveName)
+            if type(data) == "table" then
+                Saves[tostring(data.name or saveName)] = data
+            end
+        end
+        if type(listfiles) ~= "function" then return end
+        local ok, files = pcall(listfiles, self.Folder)
+        if not ok or type(files) ~= "table" then return end
+        for _, path in ipairs(files) do
+            if type(path) == "string" and path:sub(-4):lower() == ".txt" then
+                local okRead, raw = pcall(readfile, path)
+                if okRead and type(raw) == "string" then
+                    local data = self:Decode(raw)
+                    if type(data) == "table" then
+                        local fileName = path:match("([^/\\]+)%.txt$") or "Config"
+                        Saves[tostring(data.name or fileName)] = data
+                    end
+                end
+            end
+        end
+    end
+
     local function RefreshSavesList()
         if not SavesListParent then return end
         for _, c in ipairs(SavesListParent:GetChildren()) do
@@ -388,6 +534,7 @@ function zZzUILibrary:CreateWindow(options)
             end)
 
             delBtn.MouseButton1Click:Connect(function()
+                SaveFS:Delete(name)
                 Saves[name] = nil
                 item:Destroy()
                 if NoSavesLabel then
@@ -401,6 +548,7 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     local function DoSave(name)
+        name = tostring(name or ""):match("^%s*(.-)%s*$")
         if name == "" then return false end
         local cfg = { toggles = {}, sliders = {}, keybinds = {}, palette = {}, font = SelectedFontName, hideKey = HideGuiKey.Name }
         for _, t in ipairs(Registry.toggles) do
@@ -414,9 +562,12 @@ function zZzUILibrary:CreateWindow(options)
             cfg.palette[key] = ColorToHex(col)
         end
         Saves[name] = cfg
+        SaveFS:Write(name, cfg)
         RefreshSavesList()
         return true
     end
+
+    SaveFS:LoadAll()
 
     -- ═══════════════════════════════════════════════════════
     -- 🖼️ ÍCONES
@@ -2484,6 +2635,8 @@ function zZzUILibrary:CreateWindow(options)
     Window.Colors = C
     Window.Registry = Registry
     Window.Saves = Saves
+    Window.SaveFolder = SaveFS.Folder
+    Window.UniverseId = SaveFS.UniverseId
     Window.Tabs = Tabs
 
     function Window:RegisterIcon(name, assetId)
@@ -2507,8 +2660,9 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     function Window:SetColor(key, color)
-        -- Cores da interface são fixas.
-        -- Use ColorPicker próprio para cores de conteúdo, como ESP Fill.
+        if C[key] ~= nil and typeof(color) == "Color3" then
+            SetPaletteColor(key, color)
+        end
         return self
     end
 
@@ -2598,7 +2752,8 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     function Window:LoadConfig(name)
-        local cfg = Saves[name]
+        local cfg = Saves[name] or SaveFS:Read(name)
+        if cfg then Saves[name] = cfg end
         if not cfg then return false end
 
         for _, t in ipairs(Registry.toggles) do
@@ -2668,7 +2823,7 @@ function zZzUILibrary:CreateWindow(options)
             hideSub.Size = UDim2.new(1, -92, 0, 16)
             hideSub.Position = UDim2.new(0, 12, 0, 27)
             hideSub.BackgroundTransparency = 1
-            hideSub.Text = "Default: Delete"
+            hideSub.Text = "Default: J"
             hideSub.TextColor3 = C.TextSub
             hideSub.Font = Enum.Font.GothamMedium
             hideSub.TextSize = 10
@@ -2701,7 +2856,7 @@ function zZzUILibrary:CreateWindow(options)
                 if not waitingKey or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
                 waitingKey = false
                 if input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Escape then
-                    SetHideGuiKey(Enum.KeyCode.Delete)
+                    SetHideGuiKey(Enum.KeyCode.J)
                 else
                     SetHideGuiKey(input.KeyCode)
                 end
@@ -2901,6 +3056,7 @@ function zZzUILibrary:CreateWindow(options)
             NoSavesLabel = noSaves
 
             SavesListParent = listContainer
+            RefreshSavesList()
         end
 
         -- ═══════════════════════════════════════════════════════
@@ -2930,23 +3086,10 @@ function zZzUILibrary:CreateWindow(options)
             RefColor("Primary", l, "TextColor3")
         end
 
-        MakeColorSectionLabel(SubCfgColors.Left,  "FIXED THEME",  SubCfgColors, "left")
-        MakeColorSectionLabel(SubCfgColors.Right, "UI LOCKED",     SubCfgColors, "right")
+        MakeColorSectionLabel(SubCfgColors.Left,  "FONT",          SubCfgColors, "left")
+        MakeColorSectionLabel(SubCfgColors.Right, "COLOR THEMES",  SubCfgColors, "right")
 
-        local fixedNotice = Instance.new("TextLabel", SubCfgColors.Left)
-        fixedNotice.Size = UDim2.new(1, 0, 0, 44)
-        fixedNotice.BackgroundTransparency = 1
-        fixedNotice.Text = "Logo e cores da interface são fixas.\nUse ColorPicker apenas nos seus conteúdos, como ESP Fill."
-        fixedNotice.TextColor3 = C.TextSub
-        fixedNotice.Font = Enum.Font.GothamMedium
-        fixedNotice.TextSize = 10
-        fixedNotice.TextWrapped = true
-        fixedNotice.TextXAlignment = Enum.TextXAlignment.Left
-        fixedNotice.TextYAlignment = Enum.TextYAlignment.Top
-        RefColor("TextSub", fixedNotice, "TextColor3")
-
-        -- Esquerda: apenas Primary Color (removido Accent)
-        -- Interface fixa: Primary Color removido/desativado.
+        -- Fonte + temas prontos. Removido o texto antigo Fixed Theme / UI Locked.
 
         -- Fonts: dropdown organizado dentro de Config > Font.
         do
@@ -2975,6 +3118,96 @@ function zZzUILibrary:CreateWindow(options)
                 },
                 DropdownSync = fontDropdown,
             })
+        end
+
+
+        -- Color themes prontos: Purple / Red / Blue.
+        -- Eles alteram a paleta visual da UI e também são salvos no config.
+        do
+            local ThemeUI = {
+                Presets = {
+                    Purple = {
+                        Primary = Color3.fromRGB(162, 89, 255), Accent = Color3.fromRGB(207, 115, 255),
+                        Header = Color3.fromRGB(10, 6, 15), BgMain = Color3.fromRGB(15, 10, 25),
+                        Card = Color3.fromRGB(25, 20, 35), Dark = Color3.fromRGB(20, 15, 30),
+                        Border = Color3.fromRGB(60, 35, 90), TextSub = Color3.fromRGB(160, 150, 190),
+                    },
+                    Red = {
+                        Primary = Color3.fromRGB(235, 70, 90), Accent = Color3.fromRGB(255, 120, 135),
+                        Header = Color3.fromRGB(18, 5, 8), BgMain = Color3.fromRGB(24, 9, 13),
+                        Card = Color3.fromRGB(36, 18, 22), Dark = Color3.fromRGB(28, 12, 16),
+                        Border = Color3.fromRGB(110, 38, 48), TextSub = Color3.fromRGB(190, 150, 158),
+                    },
+                    Blue = {
+                        Primary = Color3.fromRGB(70, 150, 255), Accent = Color3.fromRGB(120, 200, 255),
+                        Header = Color3.fromRGB(5, 9, 18), BgMain = Color3.fromRGB(8, 14, 28),
+                        Card = Color3.fromRGB(16, 26, 44), Dark = Color3.fromRGB(10, 18, 34),
+                        Border = Color3.fromRGB(35, 75, 130), TextSub = Color3.fromRGB(145, 170, 205),
+                    },
+                }
+            }
+
+            function ThemeUI:Apply(themeName)
+                local preset = self.Presets[themeName]
+                if not preset then return end
+                for key, color in pairs(preset) do
+                    SetPaletteColor(key, color)
+                end
+                RefreshFontButtons()
+            end
+
+            function ThemeUI:Button(name, previewColor)
+                SubCfgColors._rightItems = SubCfgColors._rightItems + 1
+                SubCfgColors._rebalance()
+
+                local btn = Instance.new("TextButton", SubCfgColors.Right)
+                btn.Size = UDim2.new(1, 0, 0, 44)
+                btn.BackgroundColor3 = C.Card
+                btn.Text = ""
+                btn.AutoButtonColor = false
+                btn.BorderSizePixel = 0
+                Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+                RefColor("Card", btn, "BackgroundColor3")
+
+                local stroke = Instance.new("UIStroke", btn)
+                stroke.Color = C.Border
+                stroke.Transparency = 0.4
+                RefColor("Border", stroke, "Color")
+
+                local preview = Instance.new("Frame", btn)
+                preview.Size = UDim2.new(0, 28, 0, 28)
+                preview.Position = UDim2.new(0, 10, 0.5, -14)
+                preview.BackgroundColor3 = previewColor
+                preview.BorderSizePixel = 0
+                Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 7)
+
+                local txt = Instance.new("TextLabel", btn)
+                txt.Size = UDim2.new(1, -54, 1, 0)
+                txt.Position = UDim2.new(0, 48, 0, 0)
+                txt.BackgroundTransparency = 1
+                txt.Text = name .. " Theme"
+                txt.TextColor3 = C.Text
+                txt.Font = Enum.Font.GothamBold
+                txt.TextSize = 12
+                txt.TextXAlignment = Enum.TextXAlignment.Left
+                RefColor("Text", txt, "TextColor3")
+
+                btn.MouseEnter:Connect(function()
+                    Tween(stroke, {Transparency = 0.15, Color = previewColor}, 0.15)
+                end)
+
+                btn.MouseLeave:Connect(function()
+                    Tween(stroke, {Transparency = 0.4, Color = C.Border}, 0.15)
+                end)
+
+                btn.MouseButton1Click:Connect(function()
+                    self:Apply(name)
+                end)
+            end
+
+            ThemeUI:Button("Purple", Color3.fromRGB(162, 89, 255))
+            ThemeUI:Button("Red",    Color3.fromRGB(235, 70, 90))
+            ThemeUI:Button("Blue",   Color3.fromRGB(70, 150, 255))
         end
 
         -- Direita: apenas MainBG, HeaderBG, Border/Lines, Subtitle
