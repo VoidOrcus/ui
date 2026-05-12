@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.2-universal-save-themes"
+zZzUILibrary.Version = "1.0.3-control-setters"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -289,11 +289,105 @@ function zZzUILibrary:CreateWindow(options)
     -- ═══════════════════════════════════════════════════════
     -- 📋 REGISTRY
     -- ═══════════════════════════════════════════════════════
-    local Registry = { toggles = {}, sliders = {}, colorpickers = {} }
+    local Registry = { toggles = {}, sliders = {}, dropdowns = {}, colorpickers = {}, controls = {} }
     local RegIdCounter = 0
     local function NewRegId(prefix)
         RegIdCounter = RegIdCounter + 1
         return prefix .. "_" .. RegIdCounter
+    end
+
+    -- ═══════════════════════════════════════════════════════
+    -- 🧩 CONTROL API
+    -- Todos os componentes retornam um objeto com SetValue/GetValue.
+    -- Funciona com ponto ou dois-pontos:
+    -- local s = Sub:CreateSlider(...); s:SetValue(50) ou s.setValue(50)
+    -- Window:SetValue("Nome do Controle", valor) também funciona.
+    -- ═══════════════════════════════════════════════════════
+    local function UnwrapControlCall(entry, a, b, c)
+        if a == entry then
+            return b, c
+        end
+        return a, b
+    end
+
+    local function FireControlCallbacks(entry, value)
+        for _, fn in ipairs(entry.callbacks or {}) do
+            if type(fn) == "function" then
+                pcall(fn, value, entry)
+            end
+        end
+    end
+
+    local function RegisterControl(kind, entry)
+        entry.kind = kind
+        entry.Type = kind
+        entry.Name = entry.title
+        entry.Id = entry.id
+        Registry.controls[entry.id] = entry
+        if entry.title then
+            Registry.controls[tostring(entry.title)] = entry
+        end
+        entry.OnChanged = function(selfOrFn, maybeFn)
+            local fn = selfOrFn == entry and maybeFn or selfOrFn
+            if type(fn) ~= "function" then return nil end
+            entry.callbacks = entry.callbacks or {}
+            table.insert(entry.callbacks, fn)
+            local connected = true
+            return {
+                Disconnect = function()
+                    if not connected then return end
+                    connected = false
+                    for i = #entry.callbacks, 1, -1 do
+                        if entry.callbacks[i] == fn then
+                            table.remove(entry.callbacks, i)
+                            break
+                        end
+                    end
+                end
+            }
+        end
+        entry.onChanged = entry.OnChanged
+        return entry
+    end
+
+    local function BindBooleanAPI(entry, getFn, setFn, toggleFn)
+        entry.getState = getFn
+        entry.GetState = getFn
+        entry.getValue = getFn
+        entry.GetValue = getFn
+        entry.Get = getFn
+
+        entry.setState = function(a, b, c)
+            local value, silent = UnwrapControlCall(entry, a, b, c)
+            setFn(value, silent)
+            return entry
+        end
+        entry.SetState = entry.setState
+        entry.setValue = entry.setState
+        entry.SetValue = entry.setState
+        entry.Set = entry.setState
+
+        entry.toggle = function()
+            toggleFn()
+            return entry
+        end
+        entry.Toggle = entry.toggle
+        return entry
+    end
+
+    local function BindValueAPI(entry, getFn, setFn)
+        entry.getValue = getFn
+        entry.GetValue = getFn
+        entry.Get = getFn
+
+        entry.setValue = function(a, b, c)
+            local value, silent = UnwrapControlCall(entry, a, b, c)
+            setFn(value, silent)
+            return entry
+        end
+        entry.SetValue = entry.setValue
+        entry.Set = entry.setValue
+        return entry
     end
 
     -- ═══════════════════════════════════════════════════════
@@ -514,6 +608,9 @@ function zZzUILibrary:CreateWindow(options)
                 for _, s in ipairs(Registry.sliders) do
                     if cfg.sliders and cfg.sliders[s.id] ~= nil then s.setValue(cfg.sliders[s.id]) end
                 end
+                for _, d in ipairs(Registry.dropdowns or {}) do
+                    if cfg.dropdowns and cfg.dropdowns[d.id] ~= nil then d.setValue(cfg.dropdowns[d.id]) end
+                end
                 if cfg.palette then
                     for key, hexStr in pairs(cfg.palette) do
                         local ok, col = pcall(HexToColor, hexStr)
@@ -550,13 +647,16 @@ function zZzUILibrary:CreateWindow(options)
     local function DoSave(name)
         name = tostring(name or ""):match("^%s*(.-)%s*$")
         if name == "" then return false end
-        local cfg = { toggles = {}, sliders = {}, keybinds = {}, palette = {}, font = SelectedFontName, hideKey = HideGuiKey.Name }
+        local cfg = { toggles = {}, sliders = {}, dropdowns = {}, keybinds = {}, palette = {}, font = SelectedFontName, hideKey = HideGuiKey.Name }
         for _, t in ipairs(Registry.toggles) do
             cfg.toggles[t.id]  = t.getState()
             cfg.keybinds[t.id] = t.getKeybind()
         end
         for _, s in ipairs(Registry.sliders) do
             cfg.sliders[s.id] = s.getValue()
+        end
+        for _, d in ipairs(Registry.dropdowns or {}) do
+            cfg.dropdowns[d.id] = d.getValue()
         end
         for key, col in pairs(C) do
             cfg.palette[key] = ColorToHex(col)
@@ -1759,8 +1859,8 @@ function zZzUILibrary:CreateWindow(options)
             -- ── CHECKBOX ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateCheckbox(title, desc, default, cb)
-                local state = default or false
-                local regEntry = { id = NewRegId("chk"), title = title }
+                local state = default == true
+                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {} }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -1811,8 +1911,8 @@ function zZzUILibrary:CreateWindow(options)
                 dLbl.ClipsDescendants = true
                 RefColor("TextSub", dLbl, "TextColor3")
 
-                local function ApplyState(v, animated)
-                    state = v
+                local function ApplyState(v, animated, silent)
+                    state = v == true
                     local targetColor = state and Color3.fromRGB(162, 89, 255) or Color3.fromRGB(50,40,60)
                     if animated then
                         Tween(chkBox, {BackgroundColor3 = targetColor}, 0.15)
@@ -1823,26 +1923,31 @@ function zZzUILibrary:CreateWindow(options)
                         checkMark.TextTransparency = state and 0 or 1
                         stroke.Transparency = state and 0.3 or 0.7
                     end
-                    if cb then cb(state) end
+                    if not silent and cb then cb(state) end
+                    if not silent then FireControlCallbacks(regEntry, state) end
                 end
 
                 f.MouseButton1Click:Connect(function() ApplyState(not state, true) end)
 
-                regEntry.getState  = function() return state end
-                regEntry.setState  = function(v) ApplyState(v, false) end
-                regEntry.toggle    = function() ApplyState(not state, true) end
+                BindBooleanAPI(regEntry,
+                    function() return state end,
+                    function(v, silent) ApplyState(v, false, silent) end,
+                    function() ApplyState(not state, true) end
+                )
                 regEntry.getKeybind = function() return nil end
                 regEntry.setKeybind = function() end
+                regEntry.Frame = f
 
-                table.insert(Registry.toggles, regEntry)
+                table.insert(Registry.toggles, RegisterControl("checkbox", regEntry))
+                return regEntry
             end
 
             -- ══════════════════════════════════════════════════
             -- ── TOGGLE (com Keybind) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateToggle(title, desc, default, cb)
-                local state = default or false
-                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil }
+                local state = default == true
+                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {} }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -1909,8 +2014,8 @@ function zZzUILibrary:CreateWindow(options)
 
                 local TOGGLE_ON_COLOR = Color3.fromRGB(162, 89, 255)
 
-                local function ApplyState(v, animated)
-                    state = v
+                local function ApplyState(v, animated, silent)
+                    state = v == true
                     if animated then
                         Tween(track, {BackgroundColor3 = state and TOGGLE_ON_COLOR or Color3.fromRGB(50,40,60)}, 0.2)
                         Tween(knob,  {Position = state and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7)}, 0.2)
@@ -1920,7 +2025,8 @@ function zZzUILibrary:CreateWindow(options)
                         knob.Position = state and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7)
                         stroke.Transparency = state and 0.3 or 0.7
                     end
-                    if cb then cb(state) end
+                    if not silent and cb then cb(state) end
+                    if not silent then FireControlCallbacks(regEntry, state) end
                 end
 
                 f.MouseButton1Click:Connect(function() ApplyState(not state, true) end)
@@ -1946,9 +2052,11 @@ function zZzUILibrary:CreateWindow(options)
                     end
                 end)
 
-                regEntry.getState  = function() return state end
-                regEntry.setState  = function(v) ApplyState(v, false) end
-                regEntry.toggle    = function() ApplyState(not state, true) end
+                BindBooleanAPI(regEntry,
+                    function() return state end,
+                    function(v, silent) ApplyState(v, false, silent) end,
+                    function() ApplyState(not state, true) end
+                )
                 regEntry.getKeybind = function()
                     if regEntry.keybind then
                         return tostring(regEntry.keybind):gsub("Enum.KeyCode.", "")
@@ -1969,15 +2077,17 @@ function zZzUILibrary:CreateWindow(options)
                         kbBtn.TextColor3 = C.TextSub
                     end
                 end
-                table.insert(Registry.toggles, regEntry)
+                regEntry.Frame = f
+                table.insert(Registry.toggles, RegisterControl("toggle", regEntry))
+                return regEntry
             end
 
             -- ══════════════════════════════════════════════════
             -- ── SLIDER (MANUAL INPUT) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateSlider(title, desc, minV, maxV, default, cb)
-                local val = default or minV
-                local regEntry = { id = NewRegId("sld"), title = title }
+                local val = default ~= nil and default or minV
+                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {} }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 65)
@@ -2024,7 +2134,8 @@ function zZzUILibrary:CreateWindow(options)
                 track.BackgroundColor3=Color3.fromRGB(50,40,60); track.BorderSizePixel=0
                 Instance.new("UICorner", track)
 
-                local pct = (val-minV)/(maxV-minV)
+                val = math.clamp(tonumber(val) or minV, minV, maxV)
+                local pct = (maxV ~= minV) and ((val-minV)/(maxV-minV)) or 0
                 local fill = Instance.new("Frame", track)
                 fill.Size=UDim2.new(pct,0,1,0); fill.BackgroundColor3=C.Primary; fill.BorderSizePixel=0
                 Instance.new("UICorner", fill)
@@ -2036,18 +2147,20 @@ function zZzUILibrary:CreateWindow(options)
                 Instance.new("UICorner", knob)
                 RefColor("Text", knob, "BackgroundColor3")
 
-                local function updateSliderVisuals(newPct, newVal)
+                local function updateSliderVisuals(newPct, newVal, silent)
+                    newPct = math.clamp(tonumber(newPct) or 0, 0, 1)
                     Tween(fill, {Size = UDim2.new(newPct,0,1,0)}, 0.15)
                     Tween(knob, {Position = UDim2.new(newPct,-6,0.5,-6)}, 0.15)
                     v.Text = string.format("%.2f", newVal)
-                    if cb then cb(newVal) end
+                    if not silent and cb then cb(newVal) end
+                    if not silent then FireControlCallbacks(regEntry, newVal) end
                 end
 
                 v.FocusLost:Connect(function()
                     local num = tonumber(v.Text)
                     if num then
                         val = math.clamp(num, minV, maxV)
-                        local p2 = (val-minV)/(maxV-minV)
+                        local p2 = (maxV ~= minV) and ((val-minV)/(maxV-minV)) or 0
                         updateSliderVisuals(p2, val)
                     else
                         v.Text = string.format("%.2f", val)
@@ -2056,7 +2169,8 @@ function zZzUILibrary:CreateWindow(options)
 
                 local slDrag = false
                 local function updateDrag(input)
-                    local p = math.clamp((input.Position.X - track.AbsolutePosition.X)/track.AbsoluteSize.X, 0, 1)
+                    local w = math.max(track.AbsoluteSize.X, 1)
+                    local p = math.clamp((input.Position.X - track.AbsolutePosition.X)/w, 0, 1)
                     val = minV + (maxV-minV)*p
                     updateSliderVisuals(p, val)
                 end
@@ -2069,13 +2183,15 @@ function zZzUILibrary:CreateWindow(options)
                 UIS.InputChanged:Connect(function(i)
                     if slDrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then updateDrag(i) end end)
 
-                regEntry.getValue = function() return val end
-                regEntry.setValue = function(newVal)
-                    val = math.clamp(newVal, minV, maxV)
-                    local p2 = (val-minV)/(maxV-minV)
-                    updateSliderVisuals(p2, val)
-                end
-                table.insert(Registry.sliders, regEntry)
+                BindValueAPI(regEntry, function() return val end, function(newVal, silent)
+                    val = math.clamp(tonumber(newVal) or minV, minV, maxV)
+                    local p2 = (maxV ~= minV) and ((val-minV)/(maxV-minV)) or 0
+                    updateSliderVisuals(p2, val, silent)
+                end)
+                regEntry.Frame = f
+                regEntry.Min = minV
+                regEntry.Max = maxV
+                table.insert(Registry.sliders, RegisterControl("slider", regEntry))
                 return regEntry
             end
 
@@ -2083,7 +2199,7 @@ function zZzUILibrary:CreateWindow(options)
             -- ── COLOR PICKER INLINE ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateColorPickerInline(title, desc, defaultCol, onChange, paletteKey)
-                local regEntry = { id = NewRegId("cp"), paletteKey = paletteKey }
+                local regEntry = { id = NewRegId("cp"), title = title, paletteKey = paletteKey, callbacks = {} }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 195)
@@ -2225,6 +2341,7 @@ function zZzUILibrary:CreateWindow(options)
                     cursor.Position=UDim2.new(sat,-4,1-val,-4)
                     hCursor.Position=UDim2.new(0,-2,hue,-2)
                     if onChange then onChange(c) end
+                    FireControlCallbacks(regEntry, c)
                 end
 
                 local function SetColor(c)
@@ -2234,7 +2351,14 @@ function zZzUILibrary:CreateWindow(options)
                 end
 
                 regEntry.setColor = SetColor
-                table.insert(Registry.colorpickers, regEntry)
+                regEntry.SetColor = function(selfOrColor, maybeColor)
+                    local c = selfOrColor == regEntry and maybeColor or selfOrColor
+                    SetColor(c)
+                    return regEntry
+                end
+                BindValueAPI(regEntry, function() return Color3.fromHSV(hue, sat, val) end, function(c) SetColor(c) end)
+                regEntry.Frame = f
+                table.insert(Registry.colorpickers, RegisterControl("colorpicker", regEntry))
 
                 local svDrag,hDrag=false,false
                 SVBox.InputBegan:Connect(function(i)
@@ -2325,7 +2449,8 @@ function zZzUILibrary:CreateWindow(options)
             -- ══════════════════════════════════════════════════
             function subObj:CreateDropdown(title, desc, options, default, cb)
                 options = options or {}
-                local selected = default or options[1] or ""
+                local selected = default ~= nil and default or options[1] or ""
+                local regEntry = { id = NewRegId("dd"), title = title, callbacks = {}, options = options }
                 local isOpen   = false
                 local ITEM_H   = 28
                 local PADDING  = 6
@@ -2450,6 +2575,14 @@ function zZzUILibrary:CreateWindow(options)
                     end
                 end
 
+                local function ApplySelected(value, silent)
+                    selected = value
+                    selLbl.Text = tostring(value)
+                    RefreshOptions()
+                    if not silent and cb then cb(value) end
+                    if not silent then FireControlCallbacks(regEntry, value) end
+                end
+
                 local function CloseList()
                     if not isOpen then return end
                     isOpen = false
@@ -2516,11 +2649,8 @@ function zZzUILibrary:CreateWindow(options)
                         if opt ~= selected then Tween(item, {BackgroundColor3 = C.Dark}, 0.1) end
                     end)
                     item.MouseButton1Click:Connect(function()
-                        selected = opt
-                        selLbl.Text = tostring(opt)
-                        RefreshOptions()
+                        ApplySelected(opt, false)
                         CloseList()
-                        if cb then cb(opt) end
                     end)
                 end
 
@@ -2563,26 +2693,29 @@ function zZzUILibrary:CreateWindow(options)
                     end
                 end)
 
-                local api = {
-                    getValue = function() return selected end,
-                    setValue = function(v)
-                        selected = v
-                        selLbl.Text = tostring(v)
-                        RefreshOptions()
-                    end,
-                    close = CloseList,
-                    open = function()
-                        if not isOpen then
-                            isOpen = true
-                            PositionList()
-                            optContainer.Visible = true
-                            local openW = optContainer.AbsoluteSize.X > 0 and optContainer.AbsoluteSize.X or selBtn.AbsoluteSize.X
-                            optContainer.Size = UDim2.new(0, openW, 0, 0)
-                            Tween(chevronImg, {Rotation = 180}, 0.2)
-                            Tween(optContainer, {Size = UDim2.new(0, openW, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
-                        end
-                    end,
-                }
+                local api = regEntry
+                BindValueAPI(api, function() return selected end, function(v, silent)
+                    ApplySelected(v, silent)
+                end)
+                api.close = CloseList
+                api.Close = CloseList
+                api.open = function()
+                    if not isOpen then
+                        isOpen = true
+                        PositionList()
+                        optContainer.Visible = true
+                        local openW = optContainer.AbsoluteSize.X > 0 and optContainer.AbsoluteSize.X or selBtn.AbsoluteSize.X
+                        optContainer.Size = UDim2.new(0, openW, 0, 0)
+                        Tween(chevronImg, {Rotation = 180}, 0.2)
+                        Tween(optContainer, {Size = UDim2.new(0, openW, 0, listHeight)}, 0.2, Enum.EasingStyle.Quint)
+                    end
+                    return api
+                end
+                api.Open = api.open
+                api.Frame = f
+                api.Button = selBtn
+                api.Label = selLbl
+                table.insert(Registry.dropdowns, RegisterControl("dropdown", api))
                 return api
             end
 
