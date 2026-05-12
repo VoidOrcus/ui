@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.3-control-setters"
+zZzUILibrary.Version = "1.0.4-stable-save-flags"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -297,12 +297,18 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     -- ═══════════════════════════════════════════════════════
-    -- 🧩 CONTROL API
-    -- Todos os componentes retornam um objeto com SetValue/GetValue.
-    -- Funciona com ponto ou dois-pontos:
-    -- local s = Sub:CreateSlider(...); s:SetValue(50) ou s.setValue(50)
-    -- Window:SetValue("Nome do Controle", valor) também funciona.
+    -- 🧩 CONTROL API + SAVE FLAGS
+    -- Todos os componentes retornam SetValue/GetValue e podem usar Flag/Key estável.
+    -- Exemplo:
+    -- local Flags = {}
+    -- local Window = UI:CreateWindow({Flags = Flags})
+    -- Sub:CreateToggle({Title="Speed", Flag="SpeedHack", Default=false}, function(v) ... end)
+    -- Window:SaveConfig("A") / Window:LoadConfig("A")
     -- ═══════════════════════════════════════════════════════
+    local BoundFlags = options.Flags or options.FlagsTable or options.Config or options.ConfigTable
+    local PendingLoadConfig = nil
+    local IsApplyingConfig = false
+
     local function UnwrapControlCall(entry, a, b, c)
         if a == entry then
             return b, c
@@ -310,11 +316,257 @@ function zZzUILibrary:CreateWindow(options)
         return a, b
     end
 
+    local function CleanKeyName(value, fallback)
+        value = tostring(value or fallback or "")
+        value = value:gsub("^%s+", ""):gsub("%s+$", "")
+        if value == "" then
+            value = tostring(fallback or "Control")
+        end
+        return value
+    end
+
+    local function GetOptionValue(opts, ...)
+        if type(opts) ~= "table" then return nil end
+        local keys = {...}
+        for _, key in ipairs(keys) do
+            if opts[key] ~= nil then
+                return opts[key]
+            end
+        end
+        return nil
+    end
+
+    local function NormalizeBooleanArgs(title, desc, default, cb)
+        local opts = type(title) == "table" and title or nil
+        if opts then
+            local flag = GetOptionValue(opts, "Flag", "flag", "Key", "key", "Id", "id", "SaveKey", "saveKey")
+            title = GetOptionValue(opts, "Title", "title", "Name", "name", "Text", "text", "Label", "label") or flag or "Toggle"
+            desc = GetOptionValue(opts, "Description", "description", "Desc", "desc") or ""
+            local def = GetOptionValue(opts, "Default", "default", "Value", "value", "State", "state", "Enabled", "enabled")
+            if def ~= nil then default = def end
+            cb = GetOptionValue(opts, "Callback", "callback", "OnChanged", "onChanged") or cb
+            return title, desc, default, cb, opts, flag
+        end
+        return title, desc, default, cb, nil, nil
+    end
+
+    local function NormalizeSliderArgs(title, desc, minV, maxV, default, cb)
+        local opts = type(title) == "table" and title or nil
+        if opts then
+            local flag = GetOptionValue(opts, "Flag", "flag", "Key", "key", "Id", "id", "SaveKey", "saveKey")
+            title = GetOptionValue(opts, "Title", "title", "Name", "name", "Text", "text", "Label", "label") or flag or "Slider"
+            desc = GetOptionValue(opts, "Description", "description", "Desc", "desc") or ""
+            minV = GetOptionValue(opts, "Min", "min", "Minimum", "minimum") or minV or 0
+            maxV = GetOptionValue(opts, "Max", "max", "Maximum", "maximum") or maxV or 100
+            local def = GetOptionValue(opts, "Default", "default", "Value", "value")
+            if def ~= nil then default = def end
+            cb = GetOptionValue(opts, "Callback", "callback", "OnChanged", "onChanged") or cb
+            return title, desc, minV, maxV, default, cb, opts, flag
+        end
+        return title, desc, minV, maxV, default, cb, nil, nil
+    end
+
+    local function NormalizeDropdownArgs(title, desc, list, default, cb)
+        local opts = type(title) == "table" and title or nil
+        if opts then
+            local flag = GetOptionValue(opts, "Flag", "flag", "Key", "key", "Id", "id", "SaveKey", "saveKey")
+            title = GetOptionValue(opts, "Title", "title", "Name", "name", "Text", "text", "Label", "label") or flag or "Dropdown"
+            desc = GetOptionValue(opts, "Description", "description", "Desc", "desc") or ""
+            list = GetOptionValue(opts, "Options", "options", "List", "list", "Values", "values", "Items", "items") or list or {}
+            local def = GetOptionValue(opts, "Default", "default", "Value", "value", "Selected", "selected")
+            if def ~= nil then default = def end
+            cb = GetOptionValue(opts, "Callback", "callback", "OnChanged", "onChanged") or cb
+            return title, desc, list, default, cb, opts, flag
+        end
+        return title, desc, list, default, cb, nil, nil
+    end
+
+    local function SerializeValue(value, depth)
+        depth = depth or 0
+        local t = typeof(value)
+        if value == nil then
+            return nil
+        elseif t == "boolean" or t == "string" then
+            return value
+        elseif t == "number" then
+            if value == value and value ~= math.huge and value ~= -math.huge then
+                return value
+            end
+            return nil
+        elseif t == "Color3" then
+            return {__zType = "Color3", hex = ColorToHex(value)}
+        elseif t == "Vector2" then
+            return {__zType = "Vector2", x = value.X, y = value.Y}
+        elseif t == "Vector3" then
+            return {__zType = "Vector3", x = value.X, y = value.Y, z = value.Z}
+        elseif t == "EnumItem" then
+            return {__zType = "EnumItem", enum = tostring(value.EnumType):gsub("Enum.", ""), name = value.Name}
+        elseif type(value) == "table" and depth < 3 then
+            local out = {}
+            local count = 0
+            for k, v in pairs(value) do
+                local kt = type(k)
+                if kt == "string" or kt == "number" then
+                    local sv = SerializeValue(v, depth + 1)
+                    if sv ~= nil then
+                        out[tostring(k)] = sv
+                        count = count + 1
+                        if count >= 250 then break end
+                    end
+                end
+            end
+            return out
+        end
+        return nil
+    end
+
+    local function DeserializeValue(value)
+        if type(value) ~= "table" then
+            return value
+        end
+        if value.__zType == "Color3" then
+            return HexToColor(value.hex or "FFFFFF")
+        elseif value.__zType == "Vector2" then
+            return Vector2.new(tonumber(value.x) or 0, tonumber(value.y) or 0)
+        elseif value.__zType == "Vector3" then
+            return Vector3.new(tonumber(value.x) or 0, tonumber(value.y) or 0, tonumber(value.z) or 0)
+        elseif value.__zType == "EnumItem" and value.enum and value.name then
+            local ok, enumValue = pcall(function()
+                return Enum[value.enum][value.name]
+            end)
+            if ok then return enumValue end
+            return nil
+        end
+        local out = {}
+        for k, v in pairs(value) do
+            if k ~= "__zType" then
+                out[k] = DeserializeValue(v)
+            end
+        end
+        return out
+    end
+
+    local function ControlSaveKey(entry)
+        if not entry then return nil end
+        local key = entry.SaveKey or entry.saveKey or entry.Flag or entry.flag or entry.Key or entry.key
+        key = key or entry.title or entry.Name or entry.id
+        return CleanKeyName(key, entry.id)
+    end
+
+    local function UpdateBoundFlag(entry, value)
+        if type(BoundFlags) ~= "table" then return end
+        local key = ControlSaveKey(entry)
+        if key then
+            BoundFlags[key] = value
+        end
+    end
+
     local function FireControlCallbacks(entry, value)
+        UpdateBoundFlag(entry, value)
         for _, fn in ipairs(entry.callbacks or {}) do
             if type(fn) == "function" then
-                pcall(fn, value, entry)
+                local ok, err = pcall(fn, value, entry)
+                if not ok then
+                    warn("[zZz UI] Control callback error:", tostring(err):sub(1, 500))
+                end
             end
+        end
+    end
+
+    local function ApplyValueToControl(entry, rawValue, loadOptions)
+        if not entry or rawValue == nil then return false end
+        local value = DeserializeValue(rawValue)
+        local silent = loadOptions and loadOptions.Silent == true
+        local ok, err = pcall(function()
+            if entry.setValue then
+                entry.setValue(value, silent)
+            elseif entry.setState then
+                entry.setState(value, silent)
+            end
+            if silent then
+                UpdateBoundFlag(entry, value)
+            end
+        end)
+        if not ok then
+            warn("[zZz UI] Load control error:", tostring(entry.SaveKey or entry.title or entry.id), tostring(err):sub(1, 500))
+        end
+        return ok
+    end
+
+    local function ApplySavedConfig(cfg, loadOptions)
+        if type(cfg) ~= "table" then return false end
+        loadOptions = loadOptions or {}
+        PendingLoadConfig = cfg
+        IsApplyingConfig = true
+
+        -- Novo formato estável por Flag/Title.
+        if type(cfg.controls) == "table" then
+            for _, entry in pairs(Registry.controls) do
+                if type(entry) == "table" and entry.id then
+                    local key = ControlSaveKey(entry)
+                    local saved = cfg.controls[key]
+                    if saved == nil then saved = cfg.controls[entry.id] end
+                    if saved ~= nil then
+                        ApplyValueToControl(entry, saved, loadOptions)
+                    end
+                end
+            end
+        end
+
+        -- Formato legado por tipo/id, mantendo compatibilidade.
+        for _, t in ipairs(Registry.toggles or {}) do
+            if cfg.toggles and cfg.toggles[t.id] ~= nil then ApplyValueToControl(t, cfg.toggles[t.id], loadOptions) end
+            if cfg.keybinds and cfg.keybinds[t.id] ~= nil and t.setKeybind then pcall(t.setKeybind, cfg.keybinds[t.id]) end
+        end
+        for _, s in ipairs(Registry.sliders or {}) do
+            if cfg.sliders and cfg.sliders[s.id] ~= nil then ApplyValueToControl(s, cfg.sliders[s.id], loadOptions) end
+        end
+        for _, d in ipairs(Registry.dropdowns or {}) do
+            if cfg.dropdowns and cfg.dropdowns[d.id] ~= nil then ApplyValueToControl(d, cfg.dropdowns[d.id], loadOptions) end
+        end
+
+        -- Flags extras que o script que usa a lib quiser salvar.
+        if type(BoundFlags) == "table" and type(cfg.flags) == "table" then
+            for k, v in pairs(cfg.flags) do
+                BoundFlags[k] = DeserializeValue(v)
+            end
+        end
+
+        if cfg.palette then
+            for key, hexStr in pairs(cfg.palette) do
+                local ok, col = pcall(HexToColor, tostring(hexStr))
+                if ok and col then
+                    SetPaletteColor(key, col)
+                    for _, cp in ipairs(Registry.colorpickers or {}) do
+                        if cp.paletteKey == key and cp.setColor then pcall(cp.setColor, col) end
+                    end
+                end
+            end
+        end
+        if cfg.font then SetUIFont(cfg.font) end
+        if cfg.hideKey then SetHideGuiKey(cfg.hideKey) end
+
+        IsApplyingConfig = false
+        return true
+    end
+
+    local function ApplyPendingToControl(entry)
+        if not PendingLoadConfig or not entry then return end
+        local cfg = PendingLoadConfig
+        local key = ControlSaveKey(entry)
+        local saved = nil
+        if cfg.controls then saved = cfg.controls[key] or cfg.controls[entry.id] end
+        if saved == nil and (entry.kind == "toggle" or entry.kind == "checkbox") then
+            saved = cfg.toggles and cfg.toggles[entry.id]
+        elseif saved == nil and entry.kind == "slider" then
+            saved = cfg.sliders and cfg.sliders[entry.id]
+        elseif saved == nil and entry.kind == "dropdown" then
+            saved = cfg.dropdowns and cfg.dropdowns[entry.id]
+        end
+        if saved ~= nil then
+            ApplyValueToControl(entry, saved, {Silent = true})
+        elseif type(BoundFlags) == "table" and BoundFlags[key] ~= nil then
+            ApplyValueToControl(entry, BoundFlags[key], {Silent = true})
         end
     end
 
@@ -323,7 +575,9 @@ function zZzUILibrary:CreateWindow(options)
         entry.Type = kind
         entry.Name = entry.title
         entry.Id = entry.id
+        entry.SaveKey = ControlSaveKey(entry)
         Registry.controls[entry.id] = entry
+        Registry.controls[entry.SaveKey] = entry
         if entry.title then
             Registry.controls[tostring(entry.title)] = entry
         end
@@ -347,6 +601,12 @@ function zZzUILibrary:CreateWindow(options)
             }
         end
         entry.onChanged = entry.OnChanged
+
+        local key = ControlSaveKey(entry)
+        if type(BoundFlags) == "table" and BoundFlags[key] ~= nil then
+            ApplyValueToControl(entry, BoundFlags[key], {Silent = true})
+        end
+        ApplyPendingToControl(entry)
         return entry
     end
 
@@ -390,6 +650,63 @@ function zZzUILibrary:CreateWindow(options)
         return entry
     end
 
+    local function BuildConfigSnapshot(name)
+        local cfg = {
+            version = zZzUILibrary.Version,
+            name = name,
+            controls = {},
+            toggles = {},
+            sliders = {},
+            dropdowns = {},
+            keybinds = {},
+            flags = {},
+            palette = {},
+            font = SelectedFontName,
+            hideKey = HideGuiKey.Name,
+        }
+
+        local seen = {}
+        for _, entry in pairs(Registry.controls or {}) do
+            if type(entry) == "table" and entry.id and not seen[entry.id] then
+                seen[entry.id] = true
+                local key = ControlSaveKey(entry)
+                local getter = entry.getValue or entry.getState
+                if key and getter then
+                    local ok, value = pcall(getter)
+                    if ok then
+                        cfg.controls[key] = SerializeValue(value)
+                    end
+                end
+            end
+        end
+
+        for _, t in ipairs(Registry.toggles or {}) do
+            cfg.toggles[t.id] = SerializeValue(t.getState and t.getState() or nil)
+            cfg.keybinds[t.id] = t.getKeybind and t.getKeybind() or nil
+        end
+        for _, s in ipairs(Registry.sliders or {}) do
+            cfg.sliders[s.id] = SerializeValue(s.getValue and s.getValue() or nil)
+        end
+        for _, d in ipairs(Registry.dropdowns or {}) do
+            cfg.dropdowns[d.id] = SerializeValue(d.getValue and d.getValue() or nil)
+        end
+
+        if type(BoundFlags) == "table" then
+            for k, v in pairs(BoundFlags) do
+                if type(k) == "string" or type(k) == "number" then
+                    local sv = SerializeValue(v)
+                    if sv ~= nil then
+                        cfg.flags[tostring(k)] = sv
+                    end
+                end
+            end
+        end
+
+        for key, col in pairs(C) do
+            cfg.palette[key] = ColorToHex(col)
+        end
+        return cfg
+    end
     -- ═══════════════════════════════════════════════════════
     -- 💾 SISTEMA DE SAVES
     -- ═══════════════════════════════════════════════════════
@@ -530,7 +847,8 @@ function zZzUILibrary:CreateWindow(options)
         local ok, files = pcall(listfiles, self.Folder)
         if not ok or type(files) ~= "table" then return end
         for _, path in ipairs(files) do
-            if type(path) == "string" and path:sub(-4):lower() == ".txt" then
+            local fileNameOnly = type(path) == "string" and (path:match("([^/\\]+)$") or path) or ""
+            if type(path) == "string" and path:sub(-4):lower() == ".txt" and fileNameOnly ~= "__manifest.txt" then
                 local okRead, raw = pcall(readfile, path)
                 if okRead and type(raw) == "string" then
                     local data = self:Decode(raw)
@@ -599,34 +917,10 @@ function zZzUILibrary:CreateWindow(options)
             Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0, 5)
 
             loadBtn.MouseButton1Click:Connect(function()
-                local cfg = Saves[name]
-                if not cfg then return end
-                for _, t in ipairs(Registry.toggles) do
-                    if cfg.toggles and cfg.toggles[t.id] ~= nil then t.setState(cfg.toggles[t.id]) end
-                    if cfg.keybinds and cfg.keybinds[t.id] ~= nil then t.setKeybind(cfg.keybinds[t.id]) end
-                end
-                for _, s in ipairs(Registry.sliders) do
-                    if cfg.sliders and cfg.sliders[s.id] ~= nil then s.setValue(cfg.sliders[s.id]) end
-                end
-                for _, d in ipairs(Registry.dropdowns or {}) do
-                    if cfg.dropdowns and cfg.dropdowns[d.id] ~= nil then d.setValue(cfg.dropdowns[d.id]) end
-                end
-                if cfg.palette then
-                    for key, hexStr in pairs(cfg.palette) do
-                        local ok, col = pcall(HexToColor, hexStr)
-                        if ok and col then
-                            SetPaletteColor(key, col)
-                            for _, cp in ipairs(Registry.colorpickers) do
-                                if cp.paletteKey == key then cp.setColor(col) end
-                            end
-                        end
-                    end
-                end
-                if cfg.font then
-                    SetUIFont(cfg.font)
-                end
-                if cfg.hideKey then
-                    SetHideGuiKey(cfg.hideKey)
+                local cfg = Saves[name] or SaveFS:Read(name)
+                if cfg then
+                    Saves[name] = cfg
+                    ApplySavedConfig(cfg, {Silent = false, Source = "button"})
                 end
             end)
 
@@ -647,24 +941,11 @@ function zZzUILibrary:CreateWindow(options)
     local function DoSave(name)
         name = tostring(name or ""):match("^%s*(.-)%s*$")
         if name == "" then return false end
-        local cfg = { toggles = {}, sliders = {}, dropdowns = {}, keybinds = {}, palette = {}, font = SelectedFontName, hideKey = HideGuiKey.Name }
-        for _, t in ipairs(Registry.toggles) do
-            cfg.toggles[t.id]  = t.getState()
-            cfg.keybinds[t.id] = t.getKeybind()
-        end
-        for _, s in ipairs(Registry.sliders) do
-            cfg.sliders[s.id] = s.getValue()
-        end
-        for _, d in ipairs(Registry.dropdowns or {}) do
-            cfg.dropdowns[d.id] = d.getValue()
-        end
-        for key, col in pairs(C) do
-            cfg.palette[key] = ColorToHex(col)
-        end
+        local cfg = BuildConfigSnapshot(name)
         Saves[name] = cfg
         SaveFS:Write(name, cfg)
         RefreshSavesList()
-        return true
+        return true, cfg
     end
 
     SaveFS:LoadAll()
@@ -1859,8 +2140,9 @@ function zZzUILibrary:CreateWindow(options)
             -- ── CHECKBOX ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateCheckbox(title, desc, default, cb)
+                title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {} }
+                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -1946,8 +2228,9 @@ function zZzUILibrary:CreateWindow(options)
             -- ── TOGGLE (com Keybind) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateToggle(title, desc, default, cb)
+                title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {} }
+                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {}, Flag = __flag, SaveKey = __flag }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -2086,8 +2369,9 @@ function zZzUILibrary:CreateWindow(options)
             -- ── SLIDER (MANUAL INPUT) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateSlider(title, desc, minV, maxV, default, cb)
+                title, desc, minV, maxV, default, cb, __opts, __flag = NormalizeSliderArgs(title, desc, minV, maxV, default, cb)
                 local val = default ~= nil and default or minV
-                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {} }
+                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 65)
@@ -2199,7 +2483,16 @@ function zZzUILibrary:CreateWindow(options)
             -- ── COLOR PICKER INLINE ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateColorPickerInline(title, desc, defaultCol, onChange, paletteKey)
-                local regEntry = { id = NewRegId("cp"), title = title, paletteKey = paletteKey, callbacks = {} }
+                if type(title) == "table" then
+                    local __opts = title
+                    local __flag = GetOptionValue(__opts, "Flag", "flag", "Key", "key", "Id", "id", "SaveKey", "saveKey")
+                    title = GetOptionValue(__opts, "Title", "title", "Name", "name", "Text", "text", "Label", "label") or __flag or "Color"
+                    desc = GetOptionValue(__opts, "Description", "description", "Desc", "desc") or ""
+                    defaultCol = GetOptionValue(__opts, "Default", "default", "Value", "value", "Color", "color") or defaultCol
+                    onChange = GetOptionValue(__opts, "Callback", "callback", "OnChanged", "onChanged") or onChange
+                    paletteKey = GetOptionValue(__opts, "PaletteKey", "paletteKey") or paletteKey or __flag
+                end
+                local regEntry = { id = NewRegId("cp"), title = title, paletteKey = paletteKey, callbacks = {}, Flag = paletteKey, SaveKey = paletteKey }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 195)
@@ -2330,7 +2623,7 @@ function zZzUILibrary:CreateWindow(options)
                     pcall(function() setclipboard(HexBox.Text) end)
                 end)
 
-                local function UpdateColor()
+                local function UpdateColor(silent)
                     local c=Color3.fromHSV(hue,sat,val)
                     SVBox.BackgroundColor3=Color3.fromHSV(hue,1,1)
                     Preview.BackgroundColor3=c
@@ -2340,23 +2633,25 @@ function zZzUILibrary:CreateWindow(options)
                     HexBox.Text="#"..c:ToHex()
                     cursor.Position=UDim2.new(sat,-4,1-val,-4)
                     hCursor.Position=UDim2.new(0,-2,hue,-2)
-                    if onChange then onChange(c) end
-                    FireControlCallbacks(regEntry, c)
+                    if not silent and onChange then onChange(c) end
+                    if not silent then FireControlCallbacks(regEntry, c) end
                 end
 
-                local function SetColor(c)
+                local function SetColor(c, silent)
+                    if typeof(c) ~= "Color3" then return end
                     local h,s,v2 = c:ToHSV()
                     hue=h; sat=s; val=v2
-                    UpdateColor()
+                    UpdateColor(silent)
                 end
 
                 regEntry.setColor = SetColor
-                regEntry.SetColor = function(selfOrColor, maybeColor)
+                regEntry.SetColor = function(selfOrColor, maybeColor, maybeSilent)
                     local c = selfOrColor == regEntry and maybeColor or selfOrColor
-                    SetColor(c)
+                    local silent = selfOrColor == regEntry and maybeSilent or maybeColor
+                    SetColor(c, silent)
                     return regEntry
                 end
-                BindValueAPI(regEntry, function() return Color3.fromHSV(hue, sat, val) end, function(c) SetColor(c) end)
+                BindValueAPI(regEntry, function() return Color3.fromHSV(hue, sat, val) end, function(c, silent) SetColor(c, silent) end)
                 regEntry.Frame = f
                 table.insert(Registry.colorpickers, RegisterControl("colorpicker", regEntry))
 
@@ -2448,9 +2743,10 @@ function zZzUILibrary:CreateWindow(options)
             -- ── DROPDOWN (CORRIGIDO) ──
             -- ══════════════════════════════════════════════════
             function subObj:CreateDropdown(title, desc, options, default, cb)
+                title, desc, options, default, cb, __opts, __flag = NormalizeDropdownArgs(title, desc, options, default, cb)
                 options = options or {}
                 local selected = default ~= nil and default or options[1] or ""
-                local regEntry = { id = NewRegId("dd"), title = title, callbacks = {}, options = options }
+                local regEntry = { id = NewRegId("dd"), title = title, callbacks = {}, options = options, Flag = __flag, SaveKey = __flag }
                 local isOpen   = false
                 local ITEM_H   = 28
                 local PADDING  = 6
@@ -2887,40 +3183,50 @@ function zZzUILibrary:CreateWindow(options)
         return DoSave(name)
     end
 
-    function Window:LoadConfig(name)
+    function Window:LoadConfig(name, loadOptions)
         local cfg = Saves[name] or SaveFS:Read(name)
         if cfg then Saves[name] = cfg end
         if not cfg then return false end
+        return ApplySavedConfig(cfg, loadOptions or {Silent = false})
+    end
 
-        for _, t in ipairs(Registry.toggles) do
-            if cfg.toggles and cfg.toggles[t.id] ~= nil then t.setState(cfg.toggles[t.id]) end
-            if cfg.keybinds and cfg.keybinds[t.id] ~= nil then t.setKeybind(cfg.keybinds[t.id]) end
-        end
+    function Window:ApplyConfig(cfg, loadOptions)
+        return ApplySavedConfig(cfg, loadOptions or {Silent = false})
+    end
 
-        for _, s in ipairs(Registry.sliders) do
-            if cfg.sliders and cfg.sliders[s.id] ~= nil then s.setValue(cfg.sliders[s.id]) end
-        end
+    function Window:GetConfig(name)
+        return BuildConfigSnapshot(name or "Current")
+    end
 
-        if cfg.palette then
-            for key, hexStr in pairs(cfg.palette) do
-                local ok, col = pcall(HexToColor, hexStr)
-                if ok and col then
-                    SetPaletteColor(key, col)
-                    for _, cp in ipairs(Registry.colorpickers) do
-                        if cp.paletteKey == key then cp.setColor(col) end
-                    end
-                end
-            end
+    function Window:SetFlagsTable(flagsTable)
+        if type(flagsTable) == "table" then
+            BoundFlags = flagsTable
         end
+        return self
+    end
 
-        if cfg.font then
-            SetUIFont(cfg.font)
-        end
-        if cfg.hideKey then
-            SetHideGuiKey(cfg.hideKey)
-        end
+    function Window:GetFlagsTable()
+        return BoundFlags
+    end
 
+    function Window:SetValue(key, value, silent)
+        local control = Registry.controls[tostring(key)]
+        if not control then return false end
+        ApplyValueToControl(control, value, {Silent = silent == true})
         return true
+    end
+
+    function Window:GetValue(key)
+        local control = Registry.controls[tostring(key)]
+        if not control then return nil end
+        local getter = control.getValue or control.getState
+        if not getter then return nil end
+        local ok, value = pcall(getter)
+        return ok and value or nil
+    end
+
+    function Window:GetControl(key)
+        return Registry.controls[tostring(key)]
     end
 
     function Window:CreateDefaultConfigTab(options)
