@@ -600,6 +600,8 @@ function zZzUILibrary:CreateWindow(options)
         dna = "rbxassetid://117228697846986",
         art = "rbxassetid://102426624530815",
         form = "rbxassetid://72479444480574",
+        shield = "rbxassetid://131242319714327",
+        amber = "rbxassetid://129591178702238",
     }
     if options.Icons then
         for key, value in pairs(options.Icons) do
