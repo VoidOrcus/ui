@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.4-stable-save-flags"
+zZzUILibrary.Version = "1.0.5-save-colors-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -628,7 +628,19 @@ function zZzUILibrary:CreateWindow(options)
                     local key = ControlSaveKey(entry)
                     local saved = cfg.controls[key]
                     if saved == nil then saved = cfg.controls[entry.id] end
+                    if saved == nil and entry.paletteKey then saved = cfg.controls[entry.paletteKey] end
                     applyOnce(entry, saved)
+                end
+            end
+
+            -- Aplica colorpickers que não estejam em Registry.controls.
+            for _, cp in ipairs(Registry.colorpickers or {}) do
+                if type(cp) == "table" and cp.id and not applied[cp.id] then
+                    local key = ControlSaveKey(cp) or cp.paletteKey or cp.id
+                    local saved = cfg.controls[key]
+                    if saved == nil and cp.paletteKey then saved = cfg.controls[cp.paletteKey] end
+                    if saved == nil then saved = cfg.controls[cp.id] end
+                    applyOnce(cp, saved)
                 end
             end
         else
@@ -825,6 +837,27 @@ function zZzUILibrary:CreateWindow(options)
             cfg.dropdowns[d.id] = SerializeValue(d.getValue and d.getValue() or nil)
         end
 
+
+        -- Salva ColorPickers também em controls, por Flag/SaveKey/paletteKey.
+        -- Assim cores customizadas do script aparecem no .txt e voltam no LoadConfig.
+        for _, cp in ipairs(Registry.colorpickers or {}) do
+            if type(cp) == "table" then
+                local key = ControlSaveKey(cp) or cp.paletteKey or cp.id
+                local getter = cp.getValue or cp.getColor
+                local value = nil
+
+                if getter then
+                    local ok, got = pcall(getter)
+                    if ok then value = got end
+                elseif cp.paletteKey and C[cp.paletteKey] then
+                    value = C[cp.paletteKey]
+                end
+
+                if key and value ~= nil then
+                    cfg.controls[key] = SerializeValue(value)
+                end
+            end
+        end
         -- Não salva a tabela Flags inteira por padrão.
         -- Scripts grandes podem colocar cache, objetos e tabelas enormes em Flags; isso gera JSON gigante e lag.
         -- Salvamos somente as flags ligadas aos controles registrados.
@@ -4068,13 +4101,39 @@ function zZzUILibrary:CreateWindow(options)
                     SetPaletteColor(colorKey, c)
                 end
 
-                local cpReg = { id = NewRegId("cp"), paletteKey = colorKey }
-                cpReg.setColor = function(c)
+                local cpReg = { id = NewRegId("cp"), title = label, SaveKey = colorKey, Flag = colorKey, paletteKey = colorKey, callbacks = {} }
+
+                cpReg.getColor = function()
+                    return C[colorKey]
+                end
+                cpReg.getValue = cpReg.getColor
+                cpReg.GetColor = cpReg.getColor
+                cpReg.GetValue = cpReg.getColor
+
+                cpReg.setColor = function(c, silent)
+                    if type(c) == "table" and c.__zType == "Color3" then
+                        c = HexToColor(c.hex or "FFFFFF")
+                    elseif type(c) == "string" then
+                        c = HexToColor(c)
+                    end
+                    if typeof(c) ~= "Color3" then return cpReg end
+
                     local h,s,v2 = c:ToHSV()
                     currentH=h; currentS=s; currentV=v2
                     UpdatePopupColor()
+                    SetPaletteColor(colorKey, c)
+
+                    if silent then
+                        UpdateBoundFlag(cpReg, c)
+                    end
+                    return cpReg
                 end
+                cpReg.SetColor = cpReg.setColor
+                cpReg.setValue = cpReg.setColor
+                cpReg.SetValue = cpReg.setColor
+
                 table.insert(Registry.colorpickers, cpReg)
+                RegisterControl("colorpicker", cpReg)
 
                 local function PositionPopup()
                     local btnPos = editBtn.AbsolutePosition
