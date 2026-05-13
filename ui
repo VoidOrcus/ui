@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.5-save-colors-fix"
+zZzUILibrary.Version = "1.0.6-key-timer-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -14,6 +14,7 @@ function zZzUILibrary:CreateWindow(options)
     local CoreGui    = game:GetService("CoreGui")
     local TweenServ  = game:GetService("TweenService")
     local UIS        = game:GetService("UserInputService")
+    local HttpService = game:GetService("HttpService")
 
     local GUI_NAME = options.GuiName or "zZz_PremiumUI"
     if CoreGui:FindFirstChild(GUI_NAME) then
@@ -230,80 +231,244 @@ function zZzUILibrary:CreateWindow(options)
         return string.format("%02d:%02d:%02d", h, m, sec)
     end
 
+    local function TrimString(s)
+        return tostring(s or ""):gsub("^%s*(.-)%s*$", "%1")
+    end
+
     local function ParseJunkieDateForUI(val)
-        if type(val) == "number" then return val end
+        if type(val) == "number" then
+            return val
+        end
+
         if type(val) == "string" then
-            local y, mo, d, h, mi, sec = val:match("(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)")
-            if y and mo and d and h and mi and sec then
-                local targetTime = os.time({year=y, month=mo, day=d, hour=h, min=mi, sec=sec})
-                local t1 = os.time()
-                local t2 = os.time(os.date("!*t", t1))
-                local offset = os.difftime(t1, t2)
-                return targetTime + offset
+            val = TrimString(val)
+            if val == "" then
+                return 0
             end
+
+            -- ISO: 2026-05-13T15:30:00 / 2026-05-13 15:30:00 / com .000Z
+            local y, mo, d, h, mi, sec = val:match("(%d+)%-(%d+)%-(%d+)[T%s](%d+):(%d+):(%d+)")
+            if y and mo and d and h and mi and sec then
+                local targetTime = os.time({
+                    year = tonumber(y),
+                    month = tonumber(mo),
+                    day = tonumber(d),
+                    hour = tonumber(h),
+                    min = tonumber(mi),
+                    sec = tonumber(sec),
+                })
+
+                -- Converte data UTC/Z para horário local quando vier do Junkie/API.
+                if val:find("Z") or val:find("%+00:?00") then
+                    local now = os.time()
+                    local utcNow = os.time(os.date("!*t", now))
+                    local offset = os.difftime(now, utcNow)
+                    targetTime = targetTime + offset
+                end
+
+                return targetTime
+            end
+
+            -- Date only: 2026-05-13
+            local yy, mm, dd = val:match("^(%d+)%-(%d+)%-(%d+)$")
+            if yy and mm and dd then
+                return os.time({
+                    year = tonumber(yy),
+                    month = tonumber(mm),
+                    day = tonumber(dd),
+                    hour = 23,
+                    min = 59,
+                    sec = 59,
+                })
+            end
+
             return tonumber(val) or 0
         end
+
         return 0
+    end
+
+    local function NormalizeKeyInfoForUI(info)
+        if type(info) ~= "table" then return nil end
+
+        local keyType = info.Type or info.type or info.Plan or info.plan or info.tier or info.Tier
+        local expireRaw =
+            info.ExpireTime or info.expireTime or
+            info.ExpiresAt or info.expiresAt or
+            info.expires_at or info.expires or
+            info.Expiry or info.expiry or
+            info.expiration or info.expiration_date or
+            info.valid_until or info.validUntil or
+            info.endDate or info.end_date
+
+        local expireTime = ParseJunkieDateForUI(expireRaw)
+
+        local timeLeftRaw = info.TimeLeft or info.timeLeft or info.Time or info.time or info.remaining or info.Remaining
+        local timeLeftSeconds = tonumber(info.TimeLeftSeconds or info.timeLeftSeconds or info.secondsLeft or info.remainingSeconds)
+
+        local premium =
+            info.IsPremium == true or info.isPremium == true or
+            info.premium == true or info.Premium == true or
+            tostring(keyType or ""):lower():find("premium") ~= nil or
+            tostring(info.license_type or ""):lower():find("premium") ~= nil
+
+        -- Alguns retornos da API vêm com lifetime/permanent em texto.
+        local expireText = tostring(expireRaw or ""):lower()
+        if expireText:find("life") or expireText:find("perm") or expireText:find("infinite") then
+            premium = true
+            expireTime = 0
+        end
+
+        if not keyType then
+            keyType = premium and "Premium" or "Free"
+        end
+
+        return {
+            Type = keyType,
+            ExpireTime = expireTime,
+            TimeLeft = timeLeftRaw,
+            TimeLeftSeconds = timeLeftSeconds,
+            IsPremium = premium,
+            Raw = info,
+        }
+    end
+
+    local function ReadJsonFileForKeyInfo(path)
+        if type(readfile) ~= "function" or type(isfile) ~= "function" then return nil end
+        if not isfile(path) then return nil end
+
+        local ok, raw = pcall(readfile, path)
+        if not ok or type(raw) ~= "string" or raw == "" then return nil end
+
+        local okDecode, decoded = pcall(function()
+            return HttpService:JSONDecode(raw)
+        end)
+
+        if okDecode and type(decoded) == "table" then
+            return decoded
+        end
+
+        return nil
     end
 
     local function ReadKeyInfo()
         local g = getgenv and getgenv() or _G
-        local info = options.KeyInfo or g.zZzKeyInfo or g.JunkieKeyInfo or g.KeyInfo
-        if type(info) == "table" then
-            return info
-        end
 
-        -- Fallback igual ao código antigo: lê os arquivos gerados pelo key system.
+        -- Prioridade: dados passados pelo script que validou a key.
+        local explicit = options.KeyInfo or g.zZzKeyInfo or g.JunkieKeyInfo or g.KeyInfo
+        local explicitInfo = NormalizeKeyInfoForUI(explicit)
+
+        -- Lê arquivos gerados pelo key system.
         local expireTime = 0
         local isPremium = false
+        local fileType = nil
+        local savedKey = nil
+
         if type(readfile) == "function" and type(isfile) == "function" then
+            -- Se existir um JSON com dados completos, ele vence.
+            local jsonInfo =
+                ReadJsonFileForKeyInfo("SentinelLibrary/Bin/ApexKeyInfo.json") or
+                ReadJsonFileForKeyInfo("SentinelLibrary/Bin/KeyInfo.json") or
+                ReadJsonFileForKeyInfo("zZzHub/KeyInfo.json") or
+                ReadJsonFileForKeyInfo("KeyInfo.json")
+
+            local normalizedJson = NormalizeKeyInfoForUI(jsonInfo)
+            if normalizedJson and ((tonumber(normalizedJson.ExpireTime) or 0) > 0 or normalizedJson.IsPremium == true or normalizedJson.TimeLeft) then
+                return normalizedJson
+            end
+
+            pcall(function()
+                if isfile("Junkie_SavedKey.txt") then
+                    savedKey = TrimString(readfile("Junkie_SavedKey.txt"))
+                end
+            end)
+
             pcall(function()
                 if isfile("SentinelLibrary/Bin/ApexTime.cfg") then
-                    local rawTime = string.gsub(readfile("SentinelLibrary/Bin/ApexTime.cfg"), "^%s*(.-)%s*$", "%1")
+                    local rawTime = TrimString(readfile("SentinelLibrary/Bin/ApexTime.cfg"))
                     expireTime = ParseJunkieDateForUI(rawTime)
                 end
             end)
+
             pcall(function()
                 if isfile("SentinelLibrary/Bin/ApexPremium.cfg") then
-                    isPremium = string.match(string.lower(readfile("SentinelLibrary/Bin/ApexPremium.cfg")), "true") ~= nil
+                    local rawPremium = string.lower(TrimString(readfile("SentinelLibrary/Bin/ApexPremium.cfg")))
+                    isPremium = rawPremium:find("true") ~= nil or rawPremium:find("premium") ~= nil or rawPremium:find("life") ~= nil
+                end
+            end)
+
+            pcall(function()
+                if isfile("SentinelLibrary/Bin/ApexType.cfg") then
+                    fileType = TrimString(readfile("SentinelLibrary/Bin/ApexType.cfg"))
                 end
             end)
         end
+
+        -- Se o script passou ExpireTime=0 por ter lido antes do arquivo existir,
+        -- mas o arquivo já tem tempo válido, usa o arquivo.
+        if explicitInfo then
+            if (tonumber(expireTime) or 0) > 0 then
+                explicitInfo.ExpireTime = expireTime
+                explicitInfo.IsPremium = isPremium
+                explicitInfo.Type = fileType or (isPremium and "Premium" or "Free")
+            end
+
+            explicitInfo.SavedKey = explicitInfo.SavedKey or savedKey
+
+            return explicitInfo
+        end
+
         if expireTime == 0 or expireTime > (os.time() + 315360000) then
             isPremium = true
         end
+
         return {
-            Type = isPremium and "Premium" or "Free",
+            Type = fileType or (isPremium and "Premium" or "Free"),
             ExpireTime = expireTime,
             IsPremium = isPremium,
+            SavedKey = savedKey,
         }
     end
 
     local LastKeyInfo = nil
+
     local function ApplyKeyInfo(info)
-        info = info or ReadKeyInfo()
+        info = NormalizeKeyInfoForUI(info) or ReadKeyInfo()
         if not info then return end
+
         LastKeyInfo = info
-        local keyType = info.Type or info.type or info.Plan or info.plan
-        local premium = info.IsPremium == true or info.isPremium == true or tostring(keyType):lower():find("premium") ~= nil
-        local expire = info.ExpireTime or info.expireTime or info.ExpiresAt or info.expiresAt
-        if not keyType then keyType = premium and "Premium" or "Free" end
-        local timeText = info.TimeLeft or info.timeLeft or info.Time or info.time
+
+        local keyType = info.Type or "Unknown"
+        local premium = info.IsPremium == true
+        local expire = tonumber(info.ExpireTime) or 0
+        local timeText = info.TimeLeft
+        local timeLeftSeconds = tonumber(info.TimeLeftSeconds)
+
         if not timeText then
-            if premium or expire == 0 or (tonumber(expire) and tonumber(expire) > os.time() + 315360000) then
+            if timeLeftSeconds then
+                timeText = FormatSeconds(timeLeftSeconds)
+            elseif premium and (expire == 0 or expire > os.time() + 315360000) then
                 timeText = "Infinity"
-            elseif tonumber(expire) then
-                timeText = FormatSeconds(tonumber(expire) - os.time())
+            elseif expire > 0 then
+                local left = expire - os.time()
+                timeText = FormatSeconds(left)
             else
+                -- Não mostra 00:00:00 quando a UI ainda não conseguiu ler a data.
                 timeText = "Unknown"
             end
         end
+
         if KeyTypeLabelRef then
             KeyTypeLabelRef.Text = tostring(keyType or "Unknown")
         end
+
         if KeyTimerLabelRef then
             KeyTimerLabelRef.Text = tostring(timeText)
-            KeyTimerLabelRef.TextColor3 = tostring(timeText) == "00:00:00" and Color3.fromRGB(255,80,80) or C.Primary
+            local s = tostring(timeText)
+            KeyTimerLabelRef.TextColor3 =
+                (s == "00:00:00" or s == "Expired") and Color3.fromRGB(255, 80, 80)
+                or (s == "Unknown" and C.TextSub)
+                or C.Primary
         end
     end
 
@@ -311,7 +476,9 @@ function zZzUILibrary:CreateWindow(options)
         while ScreenGui and ScreenGui.Parent do
             task.wait(1)
             if KeyTimerLabelRef then
-                ApplyKeyInfo(LastKeyInfo or ReadKeyInfo())
+                -- Releitura contínua: corrige o caso em que a janela abriu antes
+                -- do key system gravar ApexTime.cfg/ApexPremium.cfg.
+                ApplyKeyInfo(ReadKeyInfo())
             end
         end
     end)
