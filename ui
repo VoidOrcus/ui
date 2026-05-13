@@ -127,28 +127,58 @@ function zZzUILibrary:CreateWindow(options)
         end
     end
 
+    local IsRefreshingFontButtons = false
+
     local function RefreshFontButtons()
+        if IsRefreshingFontButtons then return end
+        IsRefreshingFontButtons = true
+
         for _, ref in ipairs(FontButtonRefs) do
             local active = ref.Name == SelectedFontName
-            ref.Button.BackgroundColor3 = active and C.Primary or C.Card
-            ref.Button.TextColor3 = active and C.Text or C.TextSub
-            if ref.Stroke then
-                ref.Stroke.Color = active and C.Primary or C.Border
-                ref.Stroke.Transparency = active and 0.2 or 0.45
+
+            if ref.Button then
+                pcall(function()
+                    ref.Button.BackgroundColor3 = active and C.Primary or C.Card
+                    ref.Button.TextColor3 = active and C.Text or C.TextSub
+                end)
             end
-            if ref.DropdownSync and ref.DropdownSync.setValue then
-                ref.DropdownSync.setValue(SelectedFontName)
+
+            if ref.Stroke then
+                pcall(function()
+                    ref.Stroke.Color = active and C.Primary or C.Border
+                    ref.Stroke.Transparency = active and 0.2 or 0.45
+                end)
+            end
+
+            -- IMPORTANT:
+            -- Sync do dropdown de fonte precisa ser SILENCIOSO.
+            -- Sem isso: RefreshFontButtons -> Dropdown:SetValue -> callback -> SetUIFont -> RefreshFontButtons...
+            -- Resultado: loop infinito, stack trace gigante e crash no load.
+            if ref.DropdownSync then
+                pcall(function()
+                    if ref.DropdownSync.setValue then
+                        ref.DropdownSync.setValue(SelectedFontName, true)
+                    elseif ref.DropdownSync.SetValue then
+                        ref.DropdownSync:SetValue(SelectedFontName, true)
+                    end
+                end)
             end
         end
+
+        IsRefreshingFontButtons = false
     end
 
     local function SetUIFont(font)
         local resolved, niceName = ResolveFont(font)
         UI_FONT = resolved
         SelectedFontName = niceName
+
         for _, obj in ipairs(ScreenGui:GetDescendants()) do
-            ApplyFontToObject(obj)
+            pcall(function()
+                ApplyFontToObject(obj)
+            end)
         end
+
         RefreshFontButtons()
     end
 
@@ -2912,11 +2942,31 @@ function zZzUILibrary:CreateWindow(options)
                 end
 
                 local function ApplySelected(value, silent)
+                    local sameValue = tostring(selected) == tostring(value)
                     selected = value
                     selLbl.Text = tostring(value)
                     RefreshOptions()
-                    if not silent and cb then cb(value) end
-                    if not silent then FireControlCallbacks(regEntry, value) end
+
+                    -- Silent = atualização visual/load. Não dispara callback.
+                    if silent then
+                        UpdateBoundFlag(regEntry, value)
+                        return
+                    end
+
+                    -- Evita disparar callback de novo quando o valor já é o mesmo.
+                    if sameValue then
+                        UpdateBoundFlag(regEntry, value)
+                        return
+                    end
+
+                    if cb then
+                        local ok, err = pcall(cb, value)
+                        if not ok then
+                            warn("[zZz UI] Dropdown callback error:", tostring(err):sub(1, 500))
+                        end
+                    end
+
+                    FireControlCallbacks(regEntry, value)
                 end
 
                 local function CloseList()
@@ -3591,7 +3641,6 @@ function zZzUILibrary:CreateWindow(options)
                 SelectedFontName,
                 function(fontName)
                     SetUIFont(fontName)
-                    RefreshFontButtons()
                 end
             )
 
@@ -3639,7 +3688,6 @@ function zZzUILibrary:CreateWindow(options)
                 for key, color in pairs(preset) do
                     SetPaletteColor(key, color)
                 end
-                RefreshFontButtons()
             end
 
             function ThemeUI:Button(name, previewColor)
