@@ -503,6 +503,54 @@ function zZzUILibrary:CreateWindow(options)
         end
     end
 
+    local function ValuesEqual(a, b)
+        local ta, tb = typeof(a), typeof(b)
+        if ta ~= tb then
+            if (ta == "number" or ta == "string") and (tb == "number" or tb == "string") then
+                return tostring(a) == tostring(b)
+            end
+            return false
+        end
+        if ta == "Color3" then
+            return ColorToHex(a) == ColorToHex(b)
+        end
+        return a == b
+    end
+
+    local function RunControlCallback(entry, rawValue)
+        if type(entry) ~= "table" or rawValue == nil then return false end
+        local value = DeserializeValue(rawValue)
+
+        -- Evita reentrância se o callback do script tentar mexer no próprio controle.
+        if entry.__runningLoadCallback then
+            return false
+        end
+
+        entry.__runningLoadCallback = true
+        UpdateBoundFlag(entry, value)
+
+        local ok1, err1 = true, nil
+        if type(entry._callback) == "function" then
+            ok1, err1 = pcall(entry._callback, value, entry)
+            if not ok1 then
+                warn("[zZz UI] Load apply callback error:", tostring(entry.SaveKey or entry.title or entry.id), tostring(err1):sub(1, 500))
+            end
+        end
+
+        -- OnChanged extras registrados pelo script também precisam receber o load.
+        for _, fn in ipairs(entry.callbacks or {}) do
+            if type(fn) == "function" then
+                local ok2, err2 = pcall(fn, value, entry)
+                if not ok2 then
+                    warn("[zZz UI] Load OnChanged error:", tostring(entry.SaveKey or entry.title or entry.id), tostring(err2):sub(1, 500))
+                end
+            end
+        end
+
+        entry.__runningLoadCallback = false
+        return ok1
+    end
+
     local function ApplyValueToControl(entry, rawValue, loadOptions)
         if not entry or rawValue == nil then return false end
         local value = DeserializeValue(rawValue)
@@ -533,16 +581,40 @@ function zZzUILibrary:CreateWindow(options)
         if loadOptions.Silent == nil then
             loadOptions.Silent = true
         end
+        -- ApplyCallbacks=true resolve o problema do toggle ficar visualmente ligado,
+        -- mas a função do script não ativar. O load primeiro aplica a UI em modo silencioso
+        -- e depois roda os callbacks em fila, com yield, apenas para valores que mudaram.
+        if loadOptions.ApplyCallbacks == nil then
+            loadOptions.ApplyCallbacks = true
+        end
+        if loadOptions.CallbackBatch == nil then
+            loadOptions.CallbackBatch = 4
+        end
 
         PendingLoadConfig = cfg
         IsApplyingConfig = true
 
         local applied = {}
+        local callbackQueue = {}
         local applyCount = 0
         local function applyOnce(entry, saved)
             if type(entry) ~= "table" or not entry.id or saved == nil or applied[entry.id] then return end
             applied[entry.id] = true
-            ApplyValueToControl(entry, saved, loadOptions)
+
+            local beforeValue = nil
+            pcall(function()
+                local getter = entry.getValue or entry.getState
+                if getter then beforeValue = getter() end
+            end)
+
+            -- Durante a leitura do .txt sempre atualiza visual/Flags silenciosamente.
+            ApplyValueToControl(entry, saved, {Silent = true})
+
+            local afterValue = DeserializeValue(saved)
+            if loadOptions.ApplyCallbacks ~= false and not ValuesEqual(beforeValue, afterValue) then
+                table.insert(callbackQueue, {entry = entry, value = saved})
+            end
+
             applyCount = applyCount + 1
             -- Evita congelar quando uma config tem muitos controles.
             if applyCount % 20 == 0 then task.wait() end
@@ -597,6 +669,16 @@ function zZzUILibrary:CreateWindow(options)
         end
         if cfg.font and loadOptions.ApplyFont ~= false then SetUIFont(cfg.font) end
         if cfg.hideKey then SetHideGuiKey(cfg.hideKey) end
+
+        -- Agora ativa/desativa as funções reais do script de forma segura.
+        -- Exemplo: Fly Hack salvo true -> callback do toggle roda -> botões de fly aparecem.
+        if loadOptions.ApplyCallbacks ~= false and #callbackQueue > 0 then
+            local batch = tonumber(loadOptions.CallbackBatch) or 4
+            for i, item in ipairs(callbackQueue) do
+                RunControlCallback(item.entry, item.value)
+                if i % batch == 0 then task.wait() end
+            end
+        end
 
         IsApplyingConfig = false
         return true
@@ -990,7 +1072,7 @@ function zZzUILibrary:CreateWindow(options)
                 if cfg then
                     Saves[name] = cfg
                     -- Load do botão é silencioso: lê o .txt, atualiza UI/Flags e NÃO liga/desliga funções pesadas de uma vez.
-                    ApplySavedConfig(cfg, {Silent = true, Source = "button"})
+                    ApplySavedConfig(cfg, {Silent = true, ApplyCallbacks = true, Source = "button"})
                 end
             end)
 
@@ -2212,7 +2294,7 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateCheckbox(title, desc, default, cb)
                 title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag }
+                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -2300,7 +2382,7 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateToggle(title, desc, default, cb)
                 title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {}, Flag = __flag, SaveKey = __flag }
+                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -2441,7 +2523,7 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateSlider(title, desc, minV, maxV, default, cb)
                 title, desc, minV, maxV, default, cb, __opts, __flag = NormalizeSliderArgs(title, desc, minV, maxV, default, cb)
                 local val = default ~= nil and default or minV
-                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag }
+                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 65)
@@ -2562,7 +2644,7 @@ function zZzUILibrary:CreateWindow(options)
                     onChange = GetOptionValue(__opts, "Callback", "callback", "OnChanged", "onChanged") or onChange
                     paletteKey = GetOptionValue(__opts, "PaletteKey", "paletteKey") or paletteKey or __flag
                 end
-                local regEntry = { id = NewRegId("cp"), title = title, paletteKey = paletteKey, callbacks = {}, Flag = paletteKey, SaveKey = paletteKey }
+                local regEntry = { id = NewRegId("cp"), title = title, paletteKey = paletteKey, callbacks = {}, Flag = paletteKey, SaveKey = paletteKey, _callback = onChange }
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 195)
@@ -3277,14 +3359,16 @@ function zZzUILibrary:CreateWindow(options)
         local cfg = Saves[name] or SaveFS:Read(name)
         if cfg then Saves[name] = cfg end
         if not cfg then return false end
-        loadOptions = loadOptions or {Silent = true}
+        loadOptions = loadOptions or {}
         if loadOptions.Silent == nil then loadOptions.Silent = true end
+        if loadOptions.ApplyCallbacks == nil then loadOptions.ApplyCallbacks = true end
         return ApplySavedConfig(cfg, loadOptions)
     end
 
     function Window:ApplyConfig(cfg, loadOptions)
-        loadOptions = loadOptions or {Silent = true}
+        loadOptions = loadOptions or {}
         if loadOptions.Silent == nil then loadOptions.Silent = true end
+        if loadOptions.ApplyCallbacks == nil then loadOptions.ApplyCallbacks = true end
         return ApplySavedConfig(cfg, loadOptions)
     end
 
