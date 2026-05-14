@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.6-key-timer-fix"
+zZzUILibrary.Version = "1.0.8-large-monitor-crisp-ui"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -27,6 +27,34 @@ function zZzUILibrary:CreateWindow(options)
     ScreenGui.IgnoreGuiInset = true
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.Parent = gethui and gethui() or CoreGui
+
+    -- ═══════════════════════════════════════════════════════
+    -- 🖥️ LARGE MONITOR / HIGH DPI FIX
+    -- Em monitores 2K/4K/50", a janela antiga ficava larga demais e
+    -- o texto continuava 8-12px, dando aparência borrada/ilegível.
+    -- Aqui limitamos a janela e aplicamos boost leve de texto sem UIScale.
+    -- ═══════════════════════════════════════════════════════
+    local InitialViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(1920, 1080)
+    local IsLargeMonitor = InitialViewport.X >= 2560 or InitialViewport.Y >= 1440
+
+    local TEXT_BOOST = tonumber(options.TextBoost)
+    if TEXT_BOOST == nil then
+        TEXT_BOOST = IsLargeMonitor and 3 or 0
+    end
+
+    local TITLE_TEXT_BOOST = tonumber(options.TitleTextBoost)
+    if TITLE_TEXT_BOOST == nil then
+        TITLE_TEXT_BOOST = IsLargeMonitor and 4 or TEXT_BOOST
+    end
+
+    local CRISP_STROKE = options.CrispTextStroke
+    if CRISP_STROKE == nil then
+        CRISP_STROKE = IsLargeMonitor
+    end
+
+    local function RoundPixel(n)
+        return math.floor((tonumber(n) or 0) + 0.5)
+    end
 
     -- ═══════════════════════════════════════════════════════
     -- 🎨 PALETA + SISTEMA DE ATUALIZAÇÃO AO VIVO
@@ -125,6 +153,28 @@ function zZzUILibrary:CreateWindow(options)
     local function ApplyFontToObject(obj)
         if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
             obj.Font = UI_FONT
+
+            -- Não usamos UIScale para aumentar a interface, porque UIScale pode
+            -- deixar texto/imagem interpolado e borrado. Aumentamos TextSize real.
+            if TEXT_BOOST and TEXT_BOOST > 0 then
+                local base = obj:GetAttribute("_zZzBaseTextSize")
+                if not base then
+                    base = obj.TextSize
+                    obj:SetAttribute("_zZzBaseTextSize", base)
+                end
+
+                local isBigTitle = base >= 18
+                local boost = isBigTitle and TITLE_TEXT_BOOST or TEXT_BOOST
+                obj.TextSize = RoundPixel(base + boost)
+            end
+
+            if CRISP_STROKE and obj:IsA("TextLabel") then
+                -- Stroke quase invisível: melhora leitura em 4K/TV sem parecer contorno.
+                if obj.TextStrokeTransparency >= 0.98 then
+                    obj.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                    obj.TextStrokeTransparency = 0.88
+                end
+            end
         end
     end
 
@@ -1358,16 +1408,20 @@ function zZzUILibrary:CreateWindow(options)
 
     -- Tamanho padrão corrigido: ~60% da largura e ~68% da altura.
     -- Pode sobrescrever no CreateWindow com Scale / WidthScale / HeightScale.
-    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or 0.60
-    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or 0.68
+    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or (IsLargeMonitor and 0.46 or 0.60)
+    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or (IsLargeMonitor and 0.62 or 0.68)
 
     local MIN_CONTENT_W = options.MinContentWidth or 330
     local MIN_CONTENT_H = options.MinContentHeight or 230
 
     local MIN_WIN_W = options.MinWidth or 300
     local MIN_WIN_H = options.MinHeight or 320
-    local MAX_WIN_W = options.MaxWidth or math.huge
-    local MAX_WIN_H = options.MaxHeight or math.huge
+    -- Em monitor muito grande, não deixe a janela virar uma faixa gigante.
+    -- Isso mantém os cards compactos e o texto nítido/legível.
+    local DEFAULT_MAX_W = IsLargeMonitor and 1280 or math.huge
+    local DEFAULT_MAX_H = IsLargeMonitor and 780  or math.huge
+    local MAX_WIN_W = options.MaxWidth or DEFAULT_MAX_W
+    local MAX_WIN_H = options.MaxHeight or DEFAULT_MAX_H
 
     local WIN_W, WIN_H, SIDE_W
     local function CalculateResponsive(vp)
@@ -1477,7 +1531,7 @@ function zZzUILibrary:CreateWindow(options)
     RefColor("Primary", LogoIcon, "ImageColor3")
 
     local LogoText = Instance.new("TextLabel", Header)
-    LogoText.Size = UDim2.new(0, 100, 0, 20)
+    LogoText.Size = UDim2.new(0, 180, 0, 24)
     LogoText.Position = UDim2.new(0, 70, 0.5, -18)
     LogoText.BackgroundTransparency = 1
     LogoText.Text = options.Title or "zZzHub"
@@ -1488,7 +1542,7 @@ function zZzUILibrary:CreateWindow(options)
     RefColor("Text", LogoText, "TextColor3")
 
     local LogoSub = Instance.new("TextLabel", Header)
-    LogoSub.Size = UDim2.new(0, 100, 0, 15)
+    LogoSub.Size = UDim2.new(0, 180, 0, 18)
     LogoSub.Position = UDim2.new(0, 70, 0.5, 4)
     LogoSub.BackgroundTransparency = 1
     LogoSub.Text = options.Subtitle or "Premium"
@@ -3446,6 +3500,32 @@ function zZzUILibrary:CreateWindow(options)
     function Window:RegisterIcon(name, assetId)
         Icons[name] = assetId
         return assetId
+    end
+
+    function Window:SetLargeMonitorMode(enabled)
+        IsLargeMonitor = enabled == true
+        TEXT_BOOST = IsLargeMonitor and math.max(TEXT_BOOST or 0, 3) or (options.TextBoost or 0)
+
+        for _, obj in ipairs(ScreenGui:GetDescendants()) do
+            pcall(function()
+                ApplyFontToObject(obj)
+            end)
+        end
+
+        return self
+    end
+
+    function Window:SetTextBoost(boost)
+        TEXT_BOOST = tonumber(boost) or 0
+        TITLE_TEXT_BOOST = math.max(TEXT_BOOST, TITLE_TEXT_BOOST or TEXT_BOOST)
+
+        for _, obj in ipairs(ScreenGui:GetDescendants()) do
+            pcall(function()
+                ApplyFontToObject(obj)
+            end)
+        end
+
+        return self
     end
 
     function Window:SetTitle(title)
