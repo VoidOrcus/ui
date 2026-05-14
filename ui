@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.8-large-monitor-crisp-ui"
+zZzUILibrary.Version = "1.0.9-mobile-only-bubble"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -54,6 +54,15 @@ function zZzUILibrary:CreateWindow(options)
 
     local function RoundPixel(n)
         return math.floor((tonumber(n) or 0) + 0.5)
+    end
+
+    -- Bubble/minimize apenas para mobile real.
+    -- Emulador/PC geralmente tem MouseEnabled ou KeyboardEnabled ativo,
+    -- então não mostramos a bolha ao minimizar.
+    local IS_REAL_MOBILE = UIS.TouchEnabled and not UIS.MouseEnabled and not UIS.KeyboardEnabled
+    local SHOW_MOBILE_BUBBLE = options.MobileBubble
+    if SHOW_MOBILE_BUBBLE == nil then
+        SHOW_MOBILE_BUBBLE = IS_REAL_MOBILE
     end
 
     -- ═══════════════════════════════════════════════════════
@@ -1623,13 +1632,24 @@ function zZzUILibrary:CreateWindow(options)
         Tween(Glow, {ImageTransparency=1}, 0.28)
         Tween(Main, {Size=UDim2.new(0,WIN_W,0,0)}, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
         task.wait(0.32)
+
         Main.Visible = false
         Main.Size = UDim2.new(0,WIN_W,0,WIN_H)
-        Bubble.Size = UDim2.new(0,0,0,0); Bubble.Visible = true
-        Tween(Bubble, {Size=UDim2.new(0,56,0,56)}, 0.35, Enum.EasingStyle.Back)
+
+        -- Bolha arrastável somente em mobile real.
+        -- PC/emulador: não aparece. Para reabrir, use a Hide Key configurada.
+        if SHOW_MOBILE_BUBBLE then
+            Bubble.Size = UDim2.new(0,0,0,0)
+            Bubble.Visible = true
+            Tween(Bubble, {Size=UDim2.new(0,56,0,56)}, 0.35, Enum.EasingStyle.Back)
+        else
+            Bubble.Visible = false
+            Bubble.Size = UDim2.new(0,56,0,56)
+        end
     end)
 
     Bubble.MouseButton1Click:Connect(function()
+        if not SHOW_MOBILE_BUBBLE then return end
         if bMoved then return end
         Tween(Bubble, {Size=UDim2.new(0,0,0,0)}, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
         task.wait(0.18)
@@ -3500,6 +3520,18 @@ function zZzUILibrary:CreateWindow(options)
     function Window:RegisterIcon(name, assetId)
         Icons[name] = assetId
         return assetId
+    end
+
+    function Window:SetMobileBubble(enabled)
+        SHOW_MOBILE_BUBBLE = enabled == true
+        if not SHOW_MOBILE_BUBBLE then
+            Bubble.Visible = false
+        end
+        return self
+    end
+
+    function Window:IsMobileBubbleEnabled()
+        return SHOW_MOBILE_BUBBLE == true
     end
 
     function Window:SetLargeMonitorMode(enabled)
