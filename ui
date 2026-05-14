@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.0.9-mobile-only-bubble"
+zZzUILibrary.Version = "1.1.1-kill-reexecute-keybind-save"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -565,6 +565,24 @@ function zZzUILibrary:CreateWindow(options)
     local PendingLoadConfig = nil
     local IsApplyingConfig = false
 
+    -- ═══════════════════════════════════════════════════════
+    -- 🛑 KILL SWITCH
+    -- Estado global da janela. Quando ativo:
+    -- - bloqueia callbacks novos;
+    -- - impede load/config de reativar funções;
+    -- - desliga toggles/checkboxes registrados;
+    -- - roda cleanups que o script registrar;
+    -- - bloqueia ou destrói a UI.
+    -- ═══════════════════════════════════════════════════════
+    local KillSwitch = {
+        Active = false,
+        Reason = "",
+        Time = 0,
+        Cleanups = {},
+        Overlay = nil,
+    }
+    local RunKillSwitch = nil
+
     local function UnwrapControlCall(entry, a, b, c)
         if a == entry then
             return b, c
@@ -719,6 +737,12 @@ function zZzUILibrary:CreateWindow(options)
 
     local function FireControlCallbacks(entry, value)
         UpdateBoundFlag(entry, value)
+
+        -- Após kill switch, nenhum callback de controle pode religar funções.
+        if KillSwitch.Active then
+            return
+        end
+
         for _, fn in ipairs(entry.callbacks or {}) do
             if type(fn) == "function" then
                 local ok, err = pcall(fn, value, entry)
@@ -745,6 +769,7 @@ function zZzUILibrary:CreateWindow(options)
 
     local function RunControlCallback(entry, rawValue)
         if type(entry) ~= "table" or rawValue == nil then return false end
+        if KillSwitch.Active then return false end
         local value = DeserializeValue(rawValue)
 
         -- Evita reentrância se o callback do script tentar mexer no próprio controle.
@@ -799,6 +824,9 @@ function zZzUILibrary:CreateWindow(options)
 
     local function ApplySavedConfig(cfg, loadOptions)
         if type(cfg) ~= "table" then return false end
+        if KillSwitch.Active then
+            return false
+        end
 
         -- IMPORTANTE:
         -- Por padrão o Load é SILENCIOSO. Ele apenas lê o .txt e aplica valores na UI/Flags.
@@ -908,6 +936,24 @@ function zZzUILibrary:CreateWindow(options)
         if cfg.font and loadOptions.ApplyFont ~= false then SetUIFont(cfg.font) end
         if cfg.hideKey then SetHideGuiKey(cfg.hideKey) end
 
+        -- Keybinds precisam carregar independente do formato controls.
+        -- Antes eles só eram aplicados no formato legado, então configs novas
+        -- não restauravam as teclas dos toggles.
+        if type(cfg.keybinds) == "table" then
+            local keybindSeen = {}
+            for _, t in ipairs(Registry.toggles or {}) do
+                if type(t) == "table" and t.id and not keybindSeen[t.id] and t.setKeybind then
+                    keybindSeen[t.id] = true
+                    local stableKey = ControlSaveKey(t)
+                    local kb = cfg.keybinds[stableKey]
+                    if kb == nil then kb = cfg.keybinds[t.id] end
+                    if kb ~= nil then
+                        pcall(t.setKeybind, kb)
+                    end
+                end
+            end
+        end
+
         -- Agora ativa/desativa as funções reais do script de forma segura.
         -- Exemplo: Fly Hack salvo true -> callback do toggle roda -> botões de fly aparecem.
         if loadOptions.ApplyCallbacks ~= false and #callbackQueue > 0 then
@@ -939,6 +985,14 @@ function zZzUILibrary:CreateWindow(options)
             ApplyValueToControl(entry, saved, {Silent = true})
         elseif type(BoundFlags) == "table" and BoundFlags[key] ~= nil then
             ApplyValueToControl(entry, BoundFlags[key], {Silent = true})
+        end
+
+        if entry.setKeybind and cfg.keybinds then
+            local kb = cfg.keybinds[key]
+            if kb == nil then kb = cfg.keybinds[entry.id] end
+            if kb ~= nil then
+                pcall(entry.setKeybind, kb)
+            end
         end
     end
 
@@ -1054,7 +1108,16 @@ function zZzUILibrary:CreateWindow(options)
 
         for _, t in ipairs(Registry.toggles or {}) do
             cfg.toggles[t.id] = SerializeValue(t.getState and t.getState() or nil)
-            cfg.keybinds[t.id] = t.getKeybind and t.getKeybind() or nil
+
+            local kb = t.getKeybind and t.getKeybind() or nil
+            cfg.keybinds[t.id] = kb
+
+            -- Salva keybind também por chave estável/Flag/Título.
+            -- Assim config continua funcionando mesmo se a ordem dos toggles mudar.
+            local stableKey = ControlSaveKey(t)
+            if stableKey then
+                cfg.keybinds[stableKey] = kb
+            end
         end
         for _, s in ipairs(Registry.sliders or {}) do
             cfg.sliders[s.id] = SerializeValue(s.getValue and s.getValue() or nil)
@@ -3502,6 +3565,293 @@ function zZzUILibrary:CreateWindow(options)
 
 
     -- ═══════════════════════════════════════════════════════
+    -- 🛑 KILL SWITCH IMPLEMENTATION
+    -- ═══════════════════════════════════════════════════════
+    local function IsKeyExpiredForKill(info)
+        info = NormalizeKeyInfoForUI(info) or info
+        if type(info) ~= "table" then return false end
+
+        local raw = info.Raw or info
+        if raw.valid == false or raw.Valid == false then
+            return true
+        end
+        if raw.expired == true or tostring(raw.status or ""):lower() == "expired" then
+            return true
+        end
+
+        local premium = info.IsPremium == true
+        local expire = tonumber(info.ExpireTime) or 0
+
+        -- Premium/lifetime normalmente vem ExpireTime=0 ou muito distante.
+        if premium and (expire == 0 or expire > os.time() + 315360000) then
+            return false
+        end
+
+        return expire > 0 and expire <= os.time()
+    end
+
+    local function SafeCleanupObject(obj)
+        if obj == nil then return end
+
+        local ok, err = pcall(function()
+            local t = typeof(obj)
+
+            if t == "RBXScriptConnection" then
+                if obj.Connected then obj:Disconnect() end
+                return
+            end
+
+            if type(obj) == "function" then
+                obj()
+                return
+            end
+
+            if type(obj) == "table" then
+                if type(obj.Destroy) == "function" then obj:Destroy(); return end
+                if type(obj.Clean) == "function" then obj:Clean(); return end
+                if type(obj.Disconnect) == "function" then obj:Disconnect(); return end
+                if type(obj.destroy) == "function" then obj:destroy(); return end
+                if type(obj.clean) == "function" then obj:clean(); return end
+                if type(obj.disconnect) == "function" then obj:disconnect(); return end
+                return
+            end
+
+            if t == "Instance" then
+                obj:Destroy()
+            end
+        end)
+
+        if not ok then
+            warn("[zZz UI] Kill cleanup error:", tostring(err):sub(1, 500))
+        end
+    end
+
+    local function CreateKillOverlay(reason)
+        if not Main or not Main.Parent then return end
+        if KillSwitch.Overlay and KillSwitch.Overlay.Parent then
+            KillSwitch.Overlay.Visible = true
+            return
+        end
+
+        local overlay = Instance.new("Frame")
+        overlay.Name = "zZz_KillSwitchOverlay"
+        overlay.Size = UDim2.fromScale(1, 1)
+        overlay.Position = UDim2.fromScale(0, 0)
+        overlay.BackgroundColor3 = Color3.fromRGB(8, 3, 12)
+        overlay.BackgroundTransparency = 0.08
+        overlay.BorderSizePixel = 0
+        overlay.ZIndex = 9999
+        overlay.Active = true
+        overlay.Parent = Main
+        KillSwitch.Overlay = overlay
+
+        local title = Instance.new("TextLabel", overlay)
+        title.Size = UDim2.new(1, -40, 0, 42)
+        title.Position = UDim2.new(0, 20, 0.5, -52)
+        title.BackgroundTransparency = 1
+        title.Text = "KEY SESSION ENDED"
+        title.TextColor3 = Color3.fromRGB(255, 80, 110)
+        title.Font = Enum.Font.GothamBlack
+        title.TextSize = 24
+        title.TextXAlignment = Enum.TextXAlignment.Center
+        title.TextYAlignment = Enum.TextYAlignment.Center
+        title.ZIndex = 10000
+
+        local desc = Instance.new("TextLabel", overlay)
+        desc.Size = UDim2.new(1, -60, 0, 54)
+        desc.Position = UDim2.new(0, 30, 0.5, -8)
+        desc.BackgroundTransparency = 1
+        desc.Text = tostring(reason or "Your key is no longer valid. Please restart with a valid key.")
+        desc.TextColor3 = C.TextSub
+        desc.Font = Enum.Font.GothamMedium
+        desc.TextSize = 13
+        desc.TextWrapped = true
+        desc.TextXAlignment = Enum.TextXAlignment.Center
+        desc.TextYAlignment = Enum.TextYAlignment.Top
+        desc.ZIndex = 10000
+
+        local buttons = Instance.new("Frame", overlay)
+        buttons.Size = UDim2.new(0, 360, 0, 38)
+        buttons.Position = UDim2.new(0.5, -180, 0.5, 54)
+        buttons.BackgroundTransparency = 1
+        buttons.ZIndex = 10000
+
+        local layout = Instance.new("UIListLayout", buttons)
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        layout.VerticalAlignment = Enum.VerticalAlignment.Center
+        layout.Padding = UDim.new(0, 10)
+
+        local function makeButton(text, bg)
+            local b = Instance.new("TextButton", buttons)
+            b.Size = UDim2.new(0, 170, 0, 34)
+            b.BackgroundColor3 = bg
+            b.BorderSizePixel = 0
+            b.Text = text
+            b.TextColor3 = C.Text
+            b.Font = Enum.Font.GothamBold
+            b.TextSize = 12
+            b.AutoButtonColor = true
+            b.ZIndex = 10001
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+            local s = Instance.new("UIStroke", b)
+            s.Color = C.Border
+            s.Transparency = 0.35
+            s.ZIndex = 10002
+            pcall(function() ApplyFontToObject(b) end)
+            return b
+        end
+
+        local closeBtn = makeButton("Close UI", Color3.fromRGB(45, 25, 60))
+        closeBtn.MouseButton1Click:Connect(function()
+            pcall(function()
+                ClearCommonRunLocks()
+                if ScreenGui then ScreenGui:Destroy() end
+            end)
+        end)
+
+        local reBtn = makeButton("Re-execute", C.Primary)
+        reBtn.MouseButton1Click:Connect(function()
+            if not TryReExecute() then
+                desc.Text = "Re-execute URL/callback not configured. Close UI and run the loader again."
+                ClearCommonRunLocks()
+            end
+        end)
+
+        pcall(function()
+            ApplyFontToObject(title)
+            ApplyFontToObject(desc)
+        end)
+    end
+
+    local function ClearCommonRunLocks()
+        pcall(function()
+            local g = getgenv and getgenv() or _G
+
+            -- Locks comuns usados pelo script principal/anti-duplicação.
+            -- O usuário também pode passar options.RunLocks = {"MeuLock"}.
+            local names = {
+                "_zZz_PriorExt_Running",
+                "_zZz_Running",
+                "zZz_Running",
+                "zZzHubRunning",
+                "zZz_Hub_Running",
+                "PE_Running",
+            }
+
+            if type(options.RunLocks) == "table" then
+                for _, name in ipairs(options.RunLocks) do
+                    table.insert(names, tostring(name))
+                end
+            elseif type(options.RunLock) == "string" then
+                table.insert(names, options.RunLock)
+            end
+
+            for _, name in ipairs(names) do
+                g[name] = nil
+            end
+        end)
+    end
+
+    local function TryReExecute()
+        ClearCommonRunLocks()
+
+        local cb = options.OnReExecute or options.ReExecuteCallback
+        if type(cb) == "function" then
+            local ok, err = pcall(cb)
+            if not ok then warn("[zZz UI] ReExecute callback error:", tostring(err):sub(1, 500)) end
+            return ok
+        end
+
+        local url = options.ReExecuteUrl or options.ScriptUrl or options.LoaderUrl
+        if type(url) == "string" and url:find("http") then
+            local ok, err = pcall(function()
+                if ScreenGui then ScreenGui:Destroy() end
+                loadstring(game:HttpGet(url))()
+            end)
+            if not ok then warn("[zZz UI] ReExecute URL error:", tostring(err):sub(1, 500)) end
+            return ok
+        end
+
+        return false
+    end
+
+    RunKillSwitch = function(reason, killOptions)
+        if KillSwitch.Active then return false end
+        killOptions = killOptions or {}
+
+        KillSwitch.Active = true
+        KillSwitch.Reason = tostring(reason or "Kill switch activated")
+        KillSwitch.Time = os.time()
+
+        pcall(function()
+            local g = getgenv and getgenv() or _G
+            g.zZz_KillSwitchActive = true
+            g.zZz_KillSwitchReason = KillSwitch.Reason
+
+            -- Permite reexecutar o loader/script sem precisar reentrar no jogo.
+            ClearCommonRunLocks()
+        end)
+
+        -- Desliga visualmente e chama callbacks de OFF para todos os toggles/checkboxes.
+        -- Isso resolve funções normais. Para hooks/metamethods, o script deve registrar cleanup.
+        local seen = {}
+        local function offControl(entry)
+            if type(entry) ~= "table" or not entry.id or seen[entry.id] then return end
+            seen[entry.id] = true
+
+            if entry.kind == "toggle" or entry.kind == "checkbox" or tostring(entry.Type or "") == "toggle" or tostring(entry.Type or "") == "checkbox" then
+                pcall(function()
+                    if entry.setValue then
+                        entry.setValue(false, true)
+                    elseif entry.setState then
+                        entry.setState(false, true)
+                    end
+                end)
+
+                -- Roda callback real com false uma única vez para desligar a feature.
+                KillSwitch.Active = false
+                pcall(function()
+                    RunControlCallback(entry, false)
+                end)
+                KillSwitch.Active = true
+            end
+        end
+
+        for _, entry in ipairs(Registry.toggles or {}) do offControl(entry) end
+        for _, entry in pairs(Registry.controls or {}) do offControl(entry) end
+
+        -- Cleanups específicos registrados pelo script: conexões, troves, restore de hook, etc.
+        for i = #KillSwitch.Cleanups, 1, -1 do
+            SafeCleanupObject(KillSwitch.Cleanups[i])
+            KillSwitch.Cleanups[i] = nil
+        end
+
+        -- Bloqueia UI.
+        Bubble.Visible = false
+        if killOptions.DestroyUI == true or options.KillDestroyUI == true then
+            if ScreenGui then
+                ScreenGui:Destroy()
+            end
+        else
+            CreateKillOverlay(KillSwitch.Reason)
+            Main.Visible = true
+            Glow.Visible = true
+        end
+
+        if options.KickOnKill == true then
+            pcall(function()
+                local plr = game:GetService("Players").LocalPlayer
+                if plr then
+                    plr:Kick(KillSwitch.Reason)
+                end
+            end)
+        end
+
+        return true
+    end
+
+    -- ═══════════════════════════════════════════════════════
     -- ── API DA BIBLIOTECA ──
     -- ═══════════════════════════════════════════════════════
     local Window = {}
@@ -3615,6 +3965,62 @@ function zZzUILibrary:CreateWindow(options)
         return KeyTimerLabelRef
     end
 
+    function Window:RegisterKillCleanup(cleanup)
+        if cleanup ~= nil then
+            table.insert(KillSwitch.Cleanups, cleanup)
+        end
+        return cleanup
+    end
+
+    function Window:AddCleanup(cleanup)
+        return self:RegisterKillCleanup(cleanup)
+    end
+
+    function Window:Kill(reason, killOptions)
+        RunKillSwitch(reason or "Kill switch activated", killOptions)
+        return self
+    end
+
+    function Window:ClearRunLocks()
+        ClearCommonRunLocks()
+        return self
+    end
+
+    function Window:ReExecute()
+        TryReExecute()
+        return self
+    end
+
+    function Window:IsKilled()
+        return KillSwitch.Active == true
+    end
+
+    function Window:GetKillReason()
+        return KillSwitch.Reason
+    end
+
+    function Window:ValidateOrKill()
+        if KillSwitch.Active then return false end
+
+        local info = ReadKeyInfo()
+        if IsKeyExpiredForKill(info) then
+            RunKillSwitch("Key expired or invalid")
+            return false
+        end
+
+        local g = getgenv and getgenv() or _G
+        local validator = options.KeyValidator or options.ValidateKey or g.zZzKeyValidator
+        if type(validator) == "function" then
+            local ok, result, validatorReason = pcall(validator, info)
+            if (not ok) or result == false then
+                RunKillSwitch(validatorReason or "Key validator rejected the session")
+                return false
+            end
+        end
+
+        return true
+    end
+
     function Window:RefreshKeyInfo()
         ApplyKeyInfo(ReadKeyInfo())
         return self
@@ -3668,6 +4074,7 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     function Window:LoadConfig(name, loadOptions)
+        if KillSwitch.Active then return false end
         local cfg = Saves[name] or SaveFS:Read(name)
         if cfg then Saves[name] = cfg end
         if not cfg then return false end
@@ -3678,6 +4085,7 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     function Window:ApplyConfig(cfg, loadOptions)
+        if KillSwitch.Active then return false end
         loadOptions = loadOptions or {}
         if loadOptions.Silent == nil then loadOptions.Silent = true end
         if loadOptions.ApplyCallbacks == nil then loadOptions.ApplyCallbacks = true end
@@ -3700,6 +4108,7 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     function Window:SetValue(key, value, silent)
+        if KillSwitch.Active then return false end
         local control = Registry.controls[tostring(key)]
         if not control then return false end
         ApplyValueToControl(control, value, {Silent = silent == true})
@@ -4523,11 +4932,12 @@ function zZzUILibrary:CreateWindow(options)
     UIS.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        if KillSwitch.Active then return end
         if HideGuiKey and input.KeyCode == HideGuiKey then
             local newVisible = not Main.Visible
             Main.Visible = newVisible
             Glow.Visible = newVisible
-            Bubble.Visible = not newVisible
+            Bubble.Visible = (not newVisible) and SHOW_MOBILE_BUBBLE
             return
         end
         for _, reg in ipairs(Registry.toggles) do
@@ -4536,6 +4946,41 @@ function zZzUILibrary:CreateWindow(options)
             end
         end
     end)
+
+    -- Auto kill-check opcional.
+    -- Padrão: ligado. Para desligar: CreateWindow({KillSwitch = false})
+    if options.KillSwitch ~= false then
+        task.spawn(function()
+            local interval = tonumber(options.KillCheckInterval) or 15
+            local lastValidator = 0
+
+            while ScreenGui and ScreenGui.Parent and not KillSwitch.Active do
+                task.wait(math.max(1, interval))
+
+                local g = getgenv and getgenv() or _G
+                if g.zZz_ForceKill == true or g.zZz_KillSwitch == true then
+                    RunKillSwitch("Forced kill switch")
+                    break
+                end
+
+                local info = ReadKeyInfo()
+                if IsKeyExpiredForKill(info) then
+                    RunKillSwitch("Key expired or invalid")
+                    break
+                end
+
+                local validator = options.KeyValidator or options.ValidateKey or g.zZzKeyValidator
+                if type(validator) == "function" and os.clock() - lastValidator >= interval then
+                    lastValidator = os.clock()
+                    local ok, result, validatorReason = pcall(validator, info)
+                    if (not ok) or result == false then
+                        RunKillSwitch(validatorReason or "Key validator rejected the session")
+                        break
+                    end
+                end
+            end
+        end)
+    end
 
     if options.DefaultConfigTab == true then
         Window:CreateCategory(options.ConfigCategory or "SETTINGS")
