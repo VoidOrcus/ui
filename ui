@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.1.1-kill-reexecute-keybind-save"
+zZzUILibrary.Version = "1.1.2-kill-buttons-nil-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -3590,6 +3590,11 @@ function zZzUILibrary:CreateWindow(options)
         return expire > 0 and expire <= os.time()
     end
 
+    -- Forward declarations usadas pelos botões do Kill Overlay.
+    -- Sem isso, Lua cria outros locals depois e os botões veem nil.
+    local ClearCommonRunLocks
+    local TryReExecute
+
     local function SafeCleanupObject(obj)
         if obj == nil then return end
 
@@ -3705,16 +3710,34 @@ function zZzUILibrary:CreateWindow(options)
         local closeBtn = makeButton("Close UI", Color3.fromRGB(45, 25, 60))
         closeBtn.MouseButton1Click:Connect(function()
             pcall(function()
-                ClearCommonRunLocks()
-                if ScreenGui then ScreenGui:Destroy() end
+                if type(ClearCommonRunLocks) == "function" then
+                    ClearCommonRunLocks()
+                end
+
+                local g = getgenv and getgenv() or _G
+                g.zZz_KillSwitchActive = nil
+                g.zZz_KillSwitchReason = nil
+                g.zZz_ForceKill = nil
+                g.zZz_KillSwitch = nil
+
+                if ScreenGui and ScreenGui.Parent then
+                    ScreenGui:Destroy()
+                end
             end)
         end)
 
         local reBtn = makeButton("Re-execute", C.Primary)
         reBtn.MouseButton1Click:Connect(function()
-            if not TryReExecute() then
+            local ok = false
+            if type(TryReExecute) == "function" then
+                ok = TryReExecute()
+            end
+
+            if not ok then
                 desc.Text = "Re-execute URL/callback not configured. Close UI and run the loader again."
-                ClearCommonRunLocks()
+                if type(ClearCommonRunLocks) == "function" then
+                    ClearCommonRunLocks()
+                end
             end
         end)
 
@@ -3724,7 +3747,7 @@ function zZzUILibrary:CreateWindow(options)
         end)
     end
 
-    local function ClearCommonRunLocks()
+    ClearCommonRunLocks = function()
         pcall(function()
             local g = getgenv and getgenv() or _G
 
@@ -3750,23 +3773,50 @@ function zZzUILibrary:CreateWindow(options)
             for _, name in ipairs(names) do
                 g[name] = nil
             end
+
+            -- Libera nova execução após fechar/reexecutar.
+            g.zZz_KillSwitchActive = nil
+            g.zZz_KillSwitchReason = nil
+            g.zZz_ForceKill = nil
+            g.zZz_KillSwitch = nil
         end)
     end
 
-    local function TryReExecute()
-        ClearCommonRunLocks()
+    TryReExecute = function()
+        if type(ClearCommonRunLocks) == "function" then
+            ClearCommonRunLocks()
+        end
 
         local cb = options.OnReExecute or options.ReExecuteCallback
         if type(cb) == "function" then
-            local ok, err = pcall(cb)
+            local ok, err = pcall(function()
+                if ScreenGui and ScreenGui.Parent then
+                    ScreenGui:Destroy()
+                end
+                cb()
+            end)
             if not ok then warn("[zZz UI] ReExecute callback error:", tostring(err):sub(1, 500)) end
+            return ok
+        end
+
+        local source = options.ReExecuteSource or options.LoaderSource or options.ScriptSource
+        if type(source) == "string" and source ~= "" then
+            local ok, err = pcall(function()
+                if ScreenGui and ScreenGui.Parent then
+                    ScreenGui:Destroy()
+                end
+                loadstring(source)()
+            end)
+            if not ok then warn("[zZz UI] ReExecute source error:", tostring(err):sub(1, 500)) end
             return ok
         end
 
         local url = options.ReExecuteUrl or options.ScriptUrl or options.LoaderUrl
         if type(url) == "string" and url:find("http") then
             local ok, err = pcall(function()
-                if ScreenGui then ScreenGui:Destroy() end
+                if ScreenGui and ScreenGui.Parent then
+                    ScreenGui:Destroy()
+                end
                 loadstring(game:HttpGet(url))()
             end)
             if not ok then warn("[zZz UI] ReExecute URL error:", tostring(err):sub(1, 500)) end
