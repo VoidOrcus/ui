@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.1.3-clear-expired-saved-key"
+zZzUILibrary.Version = "1.1.4-mobile-content-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -1562,14 +1562,14 @@ function zZzUILibrary:CreateWindow(options)
 
     -- Tamanho padrão corrigido: ~60% da largura e ~68% da altura.
     -- Pode sobrescrever no CreateWindow com Scale / WidthScale / HeightScale.
-    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or (IsLargeMonitor and 0.46 or 0.60)
-    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or (IsLargeMonitor and 0.62 or 0.68)
+    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or (UIS.TouchEnabled and 0.96 or (IsLargeMonitor and 0.46 or 0.60))
+    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or (UIS.TouchEnabled and 0.94 or (IsLargeMonitor and 0.62 or 0.68))
 
-    local MIN_CONTENT_W = options.MinContentWidth or 330
-    local MIN_CONTENT_H = options.MinContentHeight or 230
+    local MIN_CONTENT_W = options.MinContentWidth or (UIS.TouchEnabled and 360 or 330)
+    local MIN_CONTENT_H = options.MinContentHeight or (UIS.TouchEnabled and 270 or 230)
 
-    local MIN_WIN_W = options.MinWidth or 300
-    local MIN_WIN_H = options.MinHeight or 320
+    local MIN_WIN_W = options.MinWidth or (UIS.TouchEnabled and 360 or 300)
+    local MIN_WIN_H = options.MinHeight or (UIS.TouchEnabled and 380 or 320)
     -- Em monitor muito grande, não deixe a janela virar uma faixa gigante.
     -- Isso mantém os cards compactos e o texto nítido/legível.
     local DEFAULT_MAX_W = IsLargeMonitor and 1280 or math.huge
@@ -2163,10 +2163,17 @@ function zZzUILibrary:CreateWindow(options)
             ContentArea.GroupTransparency = 0
             ContentArea.Visible = false
 
-            local CONTENT_GAP = 16
-            local INFO_H = 120
-            local TOP_PAD = 5
-            local BOTTOM_PAD = 8
+            -- Mobile fix:
+            -- Antes o Contents usava altura fixa de 120px. Em celulares em landscape,
+            -- o SubTabContainer fica baixo e o Contents roubava quase todo o espaço,
+            -- deixando o conteúdo principal com 20-40px e parecendo vazio.
+            local IS_COMPACT_PAGE = UIS.TouchEnabled or (Viewport.Y <= 540)
+            local CONTENT_GAP = IS_COMPACT_PAGE and 8 or 16
+            local INFO_H = IS_COMPACT_PAGE and 82 or 120
+            local MIN_MAIN_H = IS_COMPACT_PAGE and 118 or 60
+            local MIN_INFO_H = IS_COMPACT_PAGE and 58 or 72
+            local TOP_PAD = IS_COMPACT_PAGE and 3 or 5
+            local BOTTOM_PAD = IS_COMPACT_PAGE and 5 or 8
             local InfoBox = nil
 
             local MainBox = Instance.new("Frame", ContentArea)
@@ -2261,7 +2268,7 @@ function zZzUILibrary:CreateWindow(options)
 
             -- MÁGICA DO SCROLL: Mede qual coluna está maior e expande o Canvas!
             local function UpdateCanvas()
-                local MIN_H = 60
+                local MIN_H = MIN_MAIN_H
 
                 local lh = L_Lay.AbsoluteContentSize.Y + 24
                 local rh = R_Lay.AbsoluteContentSize.Y + 24
@@ -2278,20 +2285,46 @@ function zZzUILibrary:CreateWindow(options)
                     contentH = contentH + 8
                 end
 
+                local totalH = ContentArea.AbsoluteSize.Y
+                if not totalH or totalH <= 0 then
+                    totalH = MIN_H + INFO_H + CONTENT_GAP + TOP_PAD + BOTTOM_PAD
+                end
+
                 local currentInfoH = (showContents and InfoBox and InfoBox.Visible) and INFO_H or 0
                 local currentGap = currentInfoH > 0 and CONTENT_GAP or 0
-                local availableH = ContentArea.AbsoluteSize.Y - currentInfoH - currentGap - TOP_PAD - BOTTOM_PAD
+
+                -- Se a tela for baixa, reduz o Contents para preservar uma área principal utilizável.
+                -- Isso corrige o bug do mobile onde só aparecia Contents e a caixa principal ficava vazia/espremida.
+                if currentInfoH > 0 then
+                    local availableWithFullInfo = totalH - currentInfoH - currentGap - TOP_PAD - BOTTOM_PAD
+                    if availableWithFullInfo < MIN_MAIN_H then
+                        local maxInfoThatFits = totalH - MIN_MAIN_H - currentGap - TOP_PAD - BOTTOM_PAD
+                        currentInfoH = math.clamp(maxInfoThatFits, MIN_INFO_H, INFO_H)
+                    end
+
+                    if InfoBox then
+                        InfoBox.Size = UDim2.new(1, -40, 0, currentInfoH)
+                        InfoBox.Position = UDim2.new(0, 20, 1, -(currentInfoH + BOTTOM_PAD))
+                    end
+                end
+
+                local availableH = totalH - currentInfoH - currentGap - TOP_PAD - BOTTOM_PAD
 
                 -- Proteção para quando AbsoluteSize ainda está 0 durante carregamento/animação
                 if not availableH or availableH <= 0 then
                     availableH = MIN_H
                 end
 
+                -- Em mobile, nunca deixa a área principal virar uma linha fina.
+                if IS_COMPACT_PAGE and showContents then
+                    availableH = math.max(availableH, math.min(MIN_MAIN_H, totalH - TOP_PAD - BOTTOM_PAD))
+                end
+
                 local minH = math.min(MIN_H, availableH)
-                local finalH = math.clamp(contentH, minH, availableH)
+                local finalH = math.clamp(math.max(contentH, minH), minH, availableH)
 
                 MainBox.Size = UDim2.new(1, -40, 0, finalH)
-                InnerClip.CanvasSize = UDim2.new(0, 0, 0, contentH)
+                InnerClip.CanvasSize = UDim2.new(0, 0, 0, math.max(contentH, finalH))
 
                 if contentH > finalH then
                     InnerClip.ScrollBarThickness = 2
@@ -2533,8 +2566,8 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Primary", InfoTitle, "TextColor3")
 
                 local InfoCardsLayout = Instance.new("ScrollingFrame", InfoBox)
-                InfoCardsLayout.Size = UDim2.new(1, -16, 1, -34)
-                InfoCardsLayout.Position = UDim2.new(0, 8, 0, 30)
+                InfoCardsLayout.Size = UDim2.new(1, -16, 1, IS_COMPACT_PAGE and -24 or -34)
+                InfoCardsLayout.Position = UDim2.new(0, 8, 0, IS_COMPACT_PAGE and 22 or 30)
                 InfoCardsLayout.BackgroundTransparency = 1
                 InfoCardsLayout.BorderSizePixel = 0
                 InfoCardsLayout.ScrollBarThickness = 0
@@ -3271,7 +3304,7 @@ function zZzUILibrary:CreateWindow(options)
                     if self._updateCanvas then task.defer(self._updateCanvas) end
                 end
                 local card=Instance.new("Frame",self.InfoLayout)
-                card.Size=UDim2.new(0,128,0,70)
+                card.Size=UDim2.new(0, IS_COMPACT_PAGE and 104 or 128, 0, IS_COMPACT_PAGE and 48 or 70)
                 card.BackgroundColor3=Color3.fromRGB(22,16,32)
                 card.BorderSizePixel=0
                 Instance.new("UICorner",card).CornerRadius=UDim.new(0,8)
@@ -3280,7 +3313,7 @@ function zZzUILibrary:CreateWindow(options)
 
                 local ico=Instance.new("ImageLabel",card)
                 ico.Size=UDim2.new(0,18,0,18)
-                ico.Position=UDim2.new(0.5,-9,0,8)
+                ico.Position=UDim2.new(0.5,-9,0, IS_COMPACT_PAGE and 4 or 8)
                 ico.BackgroundTransparency=1
                 ico.Image=iconId
                 ico.ScaleType=Enum.ScaleType.Fit
@@ -3288,16 +3321,16 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("TextSub",ico,"ImageColor3")
 
                 local t1=Instance.new("TextLabel",card)
-                t1.Size=UDim2.new(1,-8,0,15); t1.Position=UDim2.new(0,4,0,32)
+                t1.Size=UDim2.new(1,-8,0,15); t1.Position=UDim2.new(0,4,0, IS_COMPACT_PAGE and 22 or 32)
                 t1.BackgroundTransparency=1; t1.Text=title; t1.TextColor3=C.TextSub
                 t1.Font=Enum.Font.Gotham; t1.TextSize=9
                 t1.TextXAlignment=Enum.TextXAlignment.Center
                 RefColor("TextSub",t1,"TextColor3")
 
                 local t2=Instance.new("TextLabel",card)
-                t2.Size=UDim2.new(1,-8,0,18); t2.Position=UDim2.new(0,4,0,50)
+                t2.Size=UDim2.new(1,-8,0,18); t2.Position=UDim2.new(0,4,0, IS_COMPACT_PAGE and 34 or 50)
                 t2.BackgroundTransparency=1; t2.Text=value; t2.TextColor3=C.Primary
-                t2.Font=Enum.Font.GothamBold; t2.TextSize=12
+                t2.Font=Enum.Font.GothamBold; t2.TextSize=IS_COMPACT_PAGE and 10 or 12
                 t2.TextXAlignment=Enum.TextXAlignment.Center
                 RefColor("Primary",t2,"TextColor3")
 
