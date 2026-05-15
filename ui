@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.1.4-emulator-as-pc-layout"
+zZzUILibrary.Version = "1.1.5-real-mobile-only-layout"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -57,19 +57,17 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     -- Bubble/layout compacto apenas para CELULAR/TABLET real.
-    -- BlueStacks/emulador pode aparecer como TouchEnabled, então usamos também:
-    -- viewport grande, landscape muito largo e LastInputType para tratar emulador como PC.
+    -- IMPORTANTE:
+    -- BlueStacks/emulador pode aparecer como TouchEnabled e até sem MouseEnabled,
+    -- então NÃO basta verificar touch. Para ser considerado mobile real, exigimos
+    -- também sensor de dispositivo físico: Gyroscope ou Accelerometer.
     local function GetViewportSize()
         return (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or InitialViewport or Vector2.new(1920, 1080)
     end
 
     local function DetectRealMobile()
-        local vp = GetViewportSize()
-        local maxSide = math.max(vp.X, vp.Y)
-        local minSide = math.min(vp.X, vp.Y)
-        local aspect = maxSide / math.max(minSide, 1)
-
         local lastInput = UIS:GetLastInputType()
+
         local usingMouseOrKeyboard =
             UIS.MouseEnabled
             or UIS.KeyboardEnabled
@@ -78,22 +76,24 @@ function zZzUILibrary:CreateWindow(options)
             or lastInput == Enum.UserInputType.MouseButton2
             or lastInput == Enum.UserInputType.Keyboard
 
-        -- Emulador/PC em janela grande: normalmente width/height grande ou aspect muito largo.
-        local looksLikeDesktopWindow =
-            vp.X >= 1000
-            or vp.Y >= 760
-            or aspect >= 1.95
+        local hasPhysicalMobileSensor =
+            UIS.AccelerometerEnabled == true
+            or UIS.GyroscopeEnabled == true
 
-        -- ForceMobile = true somente se você quiser testar layout mobile manualmente.
+        -- ForceMobile só para teste manual em celular.
         if options.ForceMobile == true then
             return true
         end
 
+        -- Emulador/PC intocados por padrão.
         if options.ForceDesktop == true or options.EmulatorAsPC == true then
             return false
         end
 
-        return UIS.TouchEnabled and not usingMouseOrKeyboard and not looksLikeDesktopWindow
+        -- Regra principal:
+        -- Touch + sensor físico + sem mouse/teclado = mobile real.
+        -- BlueStacks normalmente falha no sensor físico e vira layout PC.
+        return UIS.TouchEnabled and hasPhysicalMobileSensor and not usingMouseOrKeyboard
     end
 
     local IS_REAL_MOBILE = DetectRealMobile()
@@ -1596,19 +1596,19 @@ function zZzUILibrary:CreateWindow(options)
     -- Você ainda pode sobrescrever com options.Scale / WidthScale / HeightScale.
     local function IsSmallViewport(vp)
         -- Apenas usado para margens/limites; o tamanho padrão fica em cerca de 60% da tela.
-        return UIS.TouchEnabled or vp.X <= 900 or vp.Y <= 540
+        return IS_REAL_MOBILE or vp.X <= 900 or vp.Y <= 540
     end
 
     -- Tamanho padrão corrigido: ~60% da largura e ~68% da altura.
     -- Pode sobrescrever no CreateWindow com Scale / WidthScale / HeightScale.
-    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or (UIS.TouchEnabled and 0.96 or (IsLargeMonitor and 0.46 or 0.60))
-    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or (UIS.TouchEnabled and 0.94 or (IsLargeMonitor and 0.62 or 0.68))
+    local DEFAULT_SCALE_X = options.WidthScale or options.Scale or (IS_REAL_MOBILE and 0.96 or (IsLargeMonitor and 0.46 or 0.60))
+    local DEFAULT_SCALE_Y = options.HeightScale or options.Scale or (IS_REAL_MOBILE and 0.94 or (IsLargeMonitor and 0.62 or 0.68))
 
-    local MIN_CONTENT_W = options.MinContentWidth or (UIS.TouchEnabled and 360 or 330)
-    local MIN_CONTENT_H = options.MinContentHeight or (UIS.TouchEnabled and 270 or 230)
+    local MIN_CONTENT_W = options.MinContentWidth or (IS_REAL_MOBILE and 360 or 330)
+    local MIN_CONTENT_H = options.MinContentHeight or (IS_REAL_MOBILE and 270 or 230)
 
-    local MIN_WIN_W = options.MinWidth or (UIS.TouchEnabled and 360 or 300)
-    local MIN_WIN_H = options.MinHeight or (UIS.TouchEnabled and 380 or 320)
+    local MIN_WIN_W = options.MinWidth or (IS_REAL_MOBILE and 360 or 300)
+    local MIN_WIN_H = options.MinHeight or (IS_REAL_MOBILE and 380 or 320)
     -- Em monitor muito grande, não deixe a janela virar uma faixa gigante.
     -- Isso mantém os cards compactos e o texto nítido/legível.
     local DEFAULT_MAX_W = IsLargeMonitor and 1280 or math.huge
@@ -4113,6 +4113,10 @@ function zZzUILibrary:CreateWindow(options)
 
     function Window:IsRealMobile()
         return IS_REAL_MOBILE == true
+    end
+
+    function Window:GetDeviceLayoutMode()
+        return IS_REAL_MOBILE and "Mobile" or "Desktop"
     end
 
     function Window:IsMobileBubbleEnabled()
