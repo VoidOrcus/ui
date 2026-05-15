@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.1.5-real-mobile-only-layout"
+zZzUILibrary.Version = "1.2.0-premium-locks"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -20,6 +20,8 @@ function zZzUILibrary:CreateWindow(options)
     if CoreGui:FindFirstChild(GUI_NAME) then
         CoreGui[GUI_NAME]:Destroy()
     end
+
+    local Icons = nil -- predeclared for premium lock overlay
 
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name   = GUI_NAME
@@ -529,6 +531,7 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     local LastKeyInfo = nil
+    local RefreshPremiumLocks = function() end
 
     local function ApplyKeyInfo(info)
         info = NormalizeKeyInfoForUI(info) or ReadKeyInfo()
@@ -568,6 +571,7 @@ function zZzUILibrary:CreateWindow(options)
                 or (s == "Unknown" and C.TextSub)
                 or C.Primary
         end
+        pcall(RefreshPremiumLocks)
     end
 
     task.spawn(function()
@@ -776,6 +780,187 @@ function zZzUILibrary:CreateWindow(options)
         return title, desc, list, default, cb, nil, nil
     end
 
+    local function BoolOption(value)
+        if value == true then return true end
+        if type(value) == "string" then
+            local s = value:lower()
+            return s == "true" or s == "yes" or s == "premium" or s == "locked"
+        end
+        return false
+    end
+
+    local function ApplyPremiumOptions(entry, opts)
+        opts = type(opts) == "table" and opts or {}
+
+        local premiumOnly =
+            GetOptionValue(opts,
+                "PremiumOnly", "premiumOnly",
+                "RequiresPremium", "requiresPremium",
+                "Premium", "premium",
+                "Locked", "locked",
+                "Lock", "lock"
+            )
+
+        entry.PremiumOnly = BoolOption(premiumOnly)
+        entry.RequiresPremium = entry.PremiumOnly
+
+        entry.LockMessage = GetOptionValue(opts,
+            "LockMessage", "lockMessage",
+            "PremiumMessage", "premiumMessage",
+            "LockedMessage", "lockedMessage"
+        ) or "Premium Only"
+
+        entry.LockIcon = GetOptionValue(opts, "LockIcon", "lockIcon") or (Icons and (Icons.Lock or Icons.lock))
+        entry.LockDimTransparency = tonumber(GetOptionValue(opts, "LockDimTransparency", "lockDimTransparency")) or 0.18
+        return entry
+    end
+
+    local function IsPremiumKeyActive()
+        local info = LastKeyInfo or ReadKeyInfo()
+        info = NormalizeKeyInfoForUI(info) or info
+
+        if type(info) ~= "table" then
+            return false
+        end
+
+        local raw = info.Raw or info
+        local keyType = tostring(info.Type or raw.Type or raw.type or raw.plan or raw.Plan or raw.tier or raw.Tier or ""):lower()
+
+        return info.IsPremium == true
+            or raw.IsPremium == true
+            or raw.isPremium == true
+            or raw.premium == true
+            or raw.Premium == true
+            or keyType:find("premium") ~= nil
+            or keyType:find("life") ~= nil
+            or keyType:find("perm") ~= nil
+    end
+
+    local function IsControlPremiumLocked(entry)
+        return type(entry) == "table" and entry.PremiumOnly == true and not IsPremiumKeyActive()
+    end
+
+    local PremiumLockRefs = {}
+
+    local function SetDescendantsLockStyle(frame, locked)
+        if not frame then return end
+        for _, obj in ipairs(frame:GetDescendants()) do
+            if obj.Name ~= "__zPremiumLockOverlay" and not obj:IsDescendantOf(frame:FindFirstChild("__zPremiumLockOverlay") or Instance.new("Folder")) then
+                pcall(function()
+                    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                        if not obj:GetAttribute("_zOrigTextTrans") then
+                            obj:SetAttribute("_zOrigTextTrans", obj.TextTransparency)
+                        end
+                        obj.TextTransparency = locked and math.max(obj:GetAttribute("_zOrigTextTrans") or 0, 0.28) or (obj:GetAttribute("_zOrigTextTrans") or 0)
+                    elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+                        if not obj:GetAttribute("_zOrigImageTrans") then
+                            obj:SetAttribute("_zOrigImageTrans", obj.ImageTransparency)
+                        end
+                        obj.ImageTransparency = locked and math.max(obj:GetAttribute("_zOrigImageTrans") or 0, 0.35) or (obj:GetAttribute("_zOrigImageTrans") or 0)
+                    end
+                end)
+            end
+        end
+    end
+
+    local function AttachPremiumLock(entry, frame)
+        if type(entry) ~= "table" or not frame or entry.PremiumOnly ~= true then
+            return
+        end
+        if entry._premiumOverlay and entry._premiumOverlay.Parent then
+            return
+        end
+
+        local overlay = Instance.new("TextButton")
+        overlay.Name = "__zPremiumLockOverlay"
+        overlay.Size = UDim2.fromScale(1, 1)
+        overlay.Position = UDim2.fromScale(0, 0)
+        overlay.BackgroundColor3 = Color3.fromRGB(5, 3, 8)
+        overlay.BackgroundTransparency = 0.34
+        overlay.BorderSizePixel = 0
+        overlay.Text = ""
+        overlay.AutoButtonColor = false
+        overlay.Active = true
+        overlay.Selectable = false
+        overlay.ZIndex = 200
+        overlay.Parent = frame
+        pcall(function()
+            Instance.new("UICorner", overlay).CornerRadius = UDim.new(0, 8)
+        end)
+
+        local lockIconId = entry.LockIcon or (Icons and (Icons.Lock or Icons.lock))
+        if type(lockIconId) == "string" and lockIconId ~= "" then
+            local icon = Instance.new("ImageLabel", overlay)
+            icon.Name = "LockIcon"
+            icon.Size = UDim2.new(0, 22, 0, 22)
+            icon.Position = UDim2.new(0.5, -11, 0.5, -20)
+            icon.BackgroundTransparency = 1
+            icon.Image = lockIconId
+            icon.ImageColor3 = C.Primary
+            icon.ScaleType = Enum.ScaleType.Fit
+            icon.ZIndex = 201
+            RefColor("Primary", icon, "ImageColor3")
+        else
+            local iconText = Instance.new("TextLabel", overlay)
+            iconText.Name = "LockIconText"
+            iconText.Size = UDim2.new(0, 28, 0, 24)
+            iconText.Position = UDim2.new(0.5, -14, 0.5, -22)
+            iconText.BackgroundTransparency = 1
+            iconText.Text = "🔒"
+            iconText.TextColor3 = C.Primary
+            iconText.Font = Enum.Font.GothamBlack
+            iconText.TextSize = 20
+            iconText.ZIndex = 201
+            RefColor("Primary", iconText, "TextColor3")
+        end
+
+        local label = Instance.new("TextLabel", overlay)
+        label.Name = "LockLabel"
+        label.Size = UDim2.new(1, -20, 0, 18)
+        label.Position = UDim2.new(0, 10, 0.5, 6)
+        label.BackgroundTransparency = 1
+        label.Text = entry.LockMessage or "Premium Only"
+        label.TextColor3 = C.Text
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 11
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.ZIndex = 201
+        RefColor("Text", label, "TextColor3")
+
+        overlay.MouseButton1Click:Connect(function()
+            -- Apenas bloqueia o clique. Sem popup para não poluir a UI.
+            pcall(function()
+                Tween(overlay, {BackgroundTransparency = 0.22}, 0.08)
+                task.delay(0.12, function()
+                    if overlay and overlay.Parent then
+                        Tween(overlay, {BackgroundTransparency = 0.34}, 0.12)
+                    end
+                end)
+            end)
+        end)
+
+        entry._premiumOverlay = overlay
+        entry._refreshPremiumLock = function()
+            local locked = IsControlPremiumLocked(entry)
+            entry._premiumLocked = locked
+            overlay.Visible = locked
+            SetDescendantsLockStyle(frame, locked)
+        end
+
+        table.insert(PremiumLockRefs, entry)
+        entry._refreshPremiumLock()
+    end
+
+    RefreshPremiumLocks = function()
+        for _, entry in ipairs(PremiumLockRefs) do
+            if type(entry) == "table" and type(entry._refreshPremiumLock) == "function" then
+                pcall(entry._refreshPremiumLock)
+            end
+        end
+    end
+
     local function SerializeValue(value, depth)
         depth = depth or 0
         local t = typeof(value)
@@ -857,6 +1042,16 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     local function FireControlCallbacks(entry, value)
+        if IsControlPremiumLocked(entry) then
+            if entry.kind == "toggle" or entry.kind == "checkbox" then
+                UpdateBoundFlag(entry, false)
+            end
+            if type(entry._refreshPremiumLock) == "function" then
+                pcall(entry._refreshPremiumLock)
+            end
+            return
+        end
+
         UpdateBoundFlag(entry, value)
 
         -- Após kill switch, nenhum callback de controle pode religar funções.
@@ -891,6 +1086,7 @@ function zZzUILibrary:CreateWindow(options)
     local function RunControlCallback(entry, rawValue)
         if type(entry) ~= "table" or rawValue == nil then return false end
         if KillSwitch.Active then return false end
+        if IsControlPremiumLocked(entry) then return false end
         local value = DeserializeValue(rawValue)
 
         -- Evita reentrância se o callback do script tentar mexer no próprio controle.
@@ -925,6 +1121,19 @@ function zZzUILibrary:CreateWindow(options)
 
     local function ApplyValueToControl(entry, rawValue, loadOptions)
         if not entry or rawValue == nil then return false end
+        if IsControlPremiumLocked(entry) then
+            if entry.kind == "toggle" or entry.kind == "checkbox" then
+                pcall(function()
+                    if entry.setValue then entry.setValue(false, true)
+                    elseif entry.setState then entry.setState(false, true) end
+                end)
+                UpdateBoundFlag(entry, false)
+            end
+            if type(entry._refreshPremiumLock) == "function" then
+                pcall(entry._refreshPremiumLock)
+            end
+            return false
+        end
         local value = DeserializeValue(rawValue)
         local silent = loadOptions and loadOptions.Silent == true
         local ok, err = pcall(function()
@@ -1128,6 +1337,28 @@ function zZzUILibrary:CreateWindow(options)
         if entry.title then
             Registry.controls[tostring(entry.title)] = entry
         end
+
+        if entry.Frame then
+            AttachPremiumLock(entry, entry.Frame)
+        end
+
+        entry.SetPremiumOnly = function(selfOrValue, maybeValue)
+            local v = (selfOrValue == entry) and maybeValue or selfOrValue
+            entry.PremiumOnly = v == true
+            entry.RequiresPremium = entry.PremiumOnly
+            if entry.Frame then
+                AttachPremiumLock(entry, entry.Frame)
+            end
+            RefreshPremiumLocks()
+            return entry
+        end
+        entry.setPremiumOnly = entry.SetPremiumOnly
+
+        entry.IsLocked = function()
+            return IsControlPremiumLocked(entry)
+        end
+        entry.isLocked = entry.IsLocked
+
         entry.OnChanged = function(selfOrFn, maybeFn)
             local fn = selfOrFn == entry and maybeFn or selfOrFn
             if type(fn) ~= "function" then return nil end
@@ -1548,7 +1779,7 @@ function zZzUILibrary:CreateWindow(options)
     -- ═══════════════════════════════════════════════════════
     -- 🖼️ ÍCONES
     -- ═══════════════════════════════════════════════════════
-    local Icons = {
+    Icons = {
         Logo      = "rbxassetid://102070151578360",
         Misc      = "rbxassetid://131744827051815",
         Paste     = "rbxassetid://109353702840731",
@@ -1560,6 +1791,7 @@ function zZzUILibrary:CreateWindow(options)
         ArrowDown = "rbxassetid://80384425738237",
         Copy      = "rbxassetid://109353702840731",
         Save      = "rbxassetid://136594059453087",
+        Lock      = "rbxassetid://12652763528",
         Gem       = "rbxassetid://128667193028529",
         Sword     = "rbxassetid://76346343106130",
         Egg       = "rbxassetid://84626835210454",
@@ -2785,7 +3017,8 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateCheckbox(title, desc, default, cb)
                 title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("chk"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
+                local regEntry = ApplyPremiumOptions({ id = NewRegId("chk"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }, __opts)
+                if IsControlPremiumLocked(regEntry) then state = false end
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -2837,6 +3070,10 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("TextSub", dLbl, "TextColor3")
 
                 local function ApplyState(v, animated, silent)
+                    if IsControlPremiumLocked(regEntry) and v == true then
+                        v = false
+                        silent = true
+                    end
                     state = v == true
                     local targetColor = state and Color3.fromRGB(162, 89, 255) or Color3.fromRGB(50,40,60)
                     if animated then
@@ -2873,7 +3110,8 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateToggle(title, desc, default, cb)
                 title, desc, default, cb, __opts, __flag = NormalizeBooleanArgs(title, desc, default, cb)
                 local state = default == true
-                local regEntry = { id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
+                local regEntry = ApplyPremiumOptions({ id = NewRegId("tgl"), title = title, keybind = nil, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }, __opts)
+                if IsControlPremiumLocked(regEntry) then state = false end
 
                 local f = Instance.new("TextButton")
                 f.Size = UDim2.new(1, 0, 0, 72)
@@ -2941,6 +3179,10 @@ function zZzUILibrary:CreateWindow(options)
                 local TOGGLE_ON_COLOR = Color3.fromRGB(162, 89, 255)
 
                 local function ApplyState(v, animated, silent)
+                    if IsControlPremiumLocked(regEntry) and v == true then
+                        v = false
+                        silent = true
+                    end
                     state = v == true
                     if animated then
                         Tween(track, {BackgroundColor3 = state and TOGGLE_ON_COLOR or Color3.fromRGB(50,40,60)}, 0.2)
@@ -3014,7 +3256,7 @@ function zZzUILibrary:CreateWindow(options)
             function subObj:CreateSlider(title, desc, minV, maxV, default, cb)
                 title, desc, minV, maxV, default, cb, __opts, __flag = NormalizeSliderArgs(title, desc, minV, maxV, default, cb)
                 local val = default ~= nil and default or minV
-                local regEntry = { id = NewRegId("sld"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }
+                local regEntry = ApplyPremiumOptions({ id = NewRegId("sld"), title = title, callbacks = {}, Flag = __flag, SaveKey = __flag, _callback = cb }, __opts)
 
                 local f = Instance.new("Frame")
                 f.Size = UDim2.new(1, 0, 0, 65)
@@ -3075,6 +3317,9 @@ function zZzUILibrary:CreateWindow(options)
                 RefColor("Text", knob, "BackgroundColor3")
 
                 local function updateSliderVisuals(newPct, newVal, silent)
+                    if IsControlPremiumLocked(regEntry) then
+                        silent = true
+                    end
                     newPct = math.clamp(tonumber(newPct) or 0, 0, 1)
                     Tween(fill, {Size = UDim2.new(newPct,0,1,0)}, 0.15)
                     Tween(knob, {Position = UDim2.new(newPct,-6,0.5,-6)}, 0.15)
@@ -3084,6 +3329,10 @@ function zZzUILibrary:CreateWindow(options)
                 end
 
                 v.FocusLost:Connect(function()
+                    if IsControlPremiumLocked(regEntry) then
+                        v.Text = string.format("%.2f", val)
+                        return
+                    end
                     local num = tonumber(v.Text)
                     if num then
                         val = math.clamp(num, minV, maxV)
@@ -3096,6 +3345,7 @@ function zZzUILibrary:CreateWindow(options)
 
                 local slDrag = false
                 local function updateDrag(input)
+                    if IsControlPremiumLocked(regEntry) then return end
                     local w = math.max(track.AbsoluteSize.X, 1)
                     local p = math.clamp((input.Position.X - track.AbsolutePosition.X)/w, 0, 1)
                     val = minV + (maxV-minV)*p
@@ -3111,6 +3361,7 @@ function zZzUILibrary:CreateWindow(options)
                     if slDrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then updateDrag(i) end end)
 
                 BindValueAPI(regEntry, function() return val end, function(newVal, silent)
+                    if IsControlPremiumLocked(regEntry) then return end
                     val = math.clamp(tonumber(newVal) or minV, minV, maxV)
                     local p2 = (maxV ~= minV) and ((val-minV)/(maxV-minV)) or 0
                     updateSliderVisuals(p2, val, silent)
@@ -3389,7 +3640,7 @@ function zZzUILibrary:CreateWindow(options)
                 title, desc, options, default, cb, __opts, __flag = NormalizeDropdownArgs(title, desc, options, default, cb)
                 options = options or {}
                 local selected = default ~= nil and default or options[1] or ""
-                local regEntry = { id = NewRegId("dd"), title = title, callbacks = {}, options = options, Flag = __flag, SaveKey = __flag }
+                local regEntry = ApplyPremiumOptions({ id = NewRegId("dd"), title = title, callbacks = {}, options = options, Flag = __flag, SaveKey = __flag }, __opts)
                 local isOpen   = false
                 local ITEM_H   = 28
                 local PADDING  = 6
@@ -3515,6 +3766,12 @@ function zZzUILibrary:CreateWindow(options)
                 end
 
                 local function ApplySelected(value, silent)
+                    if IsControlPremiumLocked(regEntry) then
+                        if type(regEntry._refreshPremiumLock) == "function" then
+                            pcall(regEntry._refreshPremiumLock)
+                        end
+                        return
+                    end
                     local sameValue = tostring(selected) == tostring(value)
                     selected = value
                     selLbl.Text = tostring(value)
@@ -3618,6 +3875,7 @@ function zZzUILibrary:CreateWindow(options)
                 end)
 
                 selBtn.MouseButton1Click:Connect(function()
+                    if IsControlPremiumLocked(regEntry) then return end
                     isOpen = not isOpen
                     if isOpen then
                         PositionList()
@@ -3659,6 +3917,7 @@ function zZzUILibrary:CreateWindow(options)
                 api.close = CloseList
                 api.Close = CloseList
                 api.open = function()
+                    if IsControlPremiumLocked(regEntry) then return api end
                     if not isOpen then
                         isOpen = true
                         PositionList()
@@ -4366,6 +4625,28 @@ function zZzUILibrary:CreateWindow(options)
         if not getter then return nil end
         local ok, value = pcall(getter)
         return ok and value or nil
+    end
+
+    function Window:IsPremium()
+        return IsPremiumKeyActive()
+    end
+
+    function Window:SetPremiumStatus(isPremium, keyType)
+        local g = getgenv and getgenv() or _G
+        g.zZzKeyInfo = {
+            Type = keyType or (isPremium and "Premium" or "Free"),
+            IsPremium = isPremium == true,
+            ExpireTime = 0,
+        }
+
+        ApplyKeyInfo(g.zZzKeyInfo)
+        RefreshPremiumLocks()
+        return self
+    end
+
+    function Window:RefreshPremiumLocks()
+        RefreshPremiumLocks()
+        return self
     end
 
     function Window:GetControl(key)
