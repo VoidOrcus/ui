@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.1.4-mobile-content-fix"
+zZzUILibrary.Version = "1.1.4-emulator-as-pc-layout"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -56,10 +56,49 @@ function zZzUILibrary:CreateWindow(options)
         return math.floor((tonumber(n) or 0) + 0.5)
     end
 
-    -- Bubble/minimize apenas para mobile real.
-    -- Emulador/PC geralmente tem MouseEnabled ou KeyboardEnabled ativo,
-    -- então não mostramos a bolha ao minimizar.
-    local IS_REAL_MOBILE = UIS.TouchEnabled and not UIS.MouseEnabled and not UIS.KeyboardEnabled
+    -- Bubble/layout compacto apenas para CELULAR/TABLET real.
+    -- BlueStacks/emulador pode aparecer como TouchEnabled, então usamos também:
+    -- viewport grande, landscape muito largo e LastInputType para tratar emulador como PC.
+    local function GetViewportSize()
+        return (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or InitialViewport or Vector2.new(1920, 1080)
+    end
+
+    local function DetectRealMobile()
+        local vp = GetViewportSize()
+        local maxSide = math.max(vp.X, vp.Y)
+        local minSide = math.min(vp.X, vp.Y)
+        local aspect = maxSide / math.max(minSide, 1)
+
+        local lastInput = UIS:GetLastInputType()
+        local usingMouseOrKeyboard =
+            UIS.MouseEnabled
+            or UIS.KeyboardEnabled
+            or lastInput == Enum.UserInputType.MouseMovement
+            or lastInput == Enum.UserInputType.MouseButton1
+            or lastInput == Enum.UserInputType.MouseButton2
+            or lastInput == Enum.UserInputType.Keyboard
+
+        -- Emulador/PC em janela grande: normalmente width/height grande ou aspect muito largo.
+        local looksLikeDesktopWindow =
+            vp.X >= 1000
+            or vp.Y >= 760
+            or aspect >= 1.95
+
+        -- ForceMobile = true somente se você quiser testar layout mobile manualmente.
+        if options.ForceMobile == true then
+            return true
+        end
+
+        if options.ForceDesktop == true or options.EmulatorAsPC == true then
+            return false
+        end
+
+        return UIS.TouchEnabled and not usingMouseOrKeyboard and not looksLikeDesktopWindow
+    end
+
+    local IS_REAL_MOBILE = DetectRealMobile()
+    local IS_EMULATOR_OR_PC = not IS_REAL_MOBILE
+
     local SHOW_MOBILE_BUBBLE = options.MobileBubble
     if SHOW_MOBILE_BUBBLE == nil then
         SHOW_MOBILE_BUBBLE = IS_REAL_MOBILE
@@ -2167,7 +2206,7 @@ function zZzUILibrary:CreateWindow(options)
             -- Antes o Contents usava altura fixa de 120px. Em celulares em landscape,
             -- o SubTabContainer fica baixo e o Contents roubava quase todo o espaço,
             -- deixando o conteúdo principal com 20-40px e parecendo vazio.
-            local IS_COMPACT_PAGE = UIS.TouchEnabled or (Viewport.Y <= 540)
+            local IS_COMPACT_PAGE = IS_REAL_MOBILE and (Viewport.Y <= 760)
             local CONTENT_GAP = IS_COMPACT_PAGE and 8 or 16
             local INFO_H = IS_COMPACT_PAGE and 82 or 120
             local MIN_MAIN_H = IS_COMPACT_PAGE and 118 or 60
@@ -4060,6 +4099,20 @@ function zZzUILibrary:CreateWindow(options)
             Bubble.Visible = false
         end
         return self
+    end
+
+    function Window:SetEmulatorAsPC(enabled)
+        if enabled == true then
+            IS_REAL_MOBILE = false
+            IS_EMULATOR_OR_PC = true
+            SHOW_MOBILE_BUBBLE = false
+            if Bubble then Bubble.Visible = false end
+        end
+        return self
+    end
+
+    function Window:IsRealMobile()
+        return IS_REAL_MOBILE == true
     end
 
     function Window:IsMobileBubbleEnabled()
