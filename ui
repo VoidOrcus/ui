@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.2.1-premium-script-gate"
+zZzUILibrary.Version = "1.2.2-premium-gate-stale-file-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -505,13 +505,28 @@ function zZzUILibrary:CreateWindow(options)
             end)
         end
 
-        -- Se o script passou ExpireTime=0 por ter lido antes do arquivo existir,
-        -- mas o arquivo já tem tempo válido, usa o arquivo.
+        -- Se o script passou KeyInfo explicitamente, ele tem prioridade sobre arquivos locais antigos.
+        -- IMPORTANTE:
+        -- Usuários que antes usaram uma key Free podem ter ApexPremium.cfg antigo = false.
+        -- Esse arquivo NÃO pode rebaixar uma key premium nova para Free.
         if explicitInfo then
+            local explicitPremium = explicitInfo.IsPremium == true
+                or (explicitInfo.Raw and (explicitInfo.Raw.IsPremium == true or explicitInfo.Raw.isPremium == true or explicitInfo.Raw.is_premium == true or explicitInfo.Raw.premium == true or explicitInfo.Raw.Premium == true))
+                or tostring(explicitInfo.Type or ""):lower():find("premium") ~= nil
+                or tostring(explicitInfo.Raw and (explicitInfo.Raw.license_type or explicitInfo.Raw.plan or explicitInfo.Raw.tier) or ""):lower():find("premium") ~= nil
+
             if (tonumber(expireTime) or 0) > 0 then
-                explicitInfo.ExpireTime = expireTime
-                explicitInfo.IsPremium = isPremium
-                explicitInfo.Type = fileType or (isPremium and "Premium" or "Free")
+                -- Usa o tempo do arquivo somente se o KeyInfo não trouxe tempo melhor.
+                if (tonumber(explicitInfo.ExpireTime) or 0) <= 0 then
+                    explicitInfo.ExpireTime = expireTime
+                end
+
+                -- Nunca sobrescreve Premium=true por arquivo antigo false.
+                explicitInfo.IsPremium = explicitPremium or isPremium
+                explicitInfo.Type = explicitInfo.IsPremium and "Premium" or (fileType or explicitInfo.Type or "Free")
+            else
+                explicitInfo.IsPremium = explicitPremium or explicitInfo.IsPremium == true
+                explicitInfo.Type = explicitInfo.IsPremium and "Premium" or (explicitInfo.Type or "Free")
             end
 
             explicitInfo.SavedKey = explicitInfo.SavedKey or savedKey
