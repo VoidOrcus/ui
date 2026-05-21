@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 local zZzUILibrary = {}
-zZzUILibrary.Version = "1.2.3-visibility-line-fix"
+zZzUILibrary.Version = "1.2.4-free-access-premium-lock-fix"
 
 function zZzUILibrary:CreateWindow(options)
     options = options or {}
@@ -534,7 +534,10 @@ function zZzUILibrary:CreateWindow(options)
             return explicitInfo
         end
 
-        if expireTime == 0 or expireTime > (os.time() + 315360000) then
+        -- FREE ACCESS FIX:
+        -- expireTime == 0 means "unknown/no expiration file", NOT premium.
+        -- Only mark Premium when the key info/file explicitly says premium/lifetime.
+        if expireTime > (os.time() + 315360000) then
             isPremium = true
         end
 
@@ -868,11 +871,14 @@ function zZzUILibrary:CreateWindow(options)
     -- if not Window then return end
     -- ═══════════════════════════════════════════════════════
     local function ShouldRequirePremiumWindow()
-        return options.RequirePremiumKey == true
-            or options.PremiumOnlyScript == true
-            or options.ScriptPremiumOnly == true
-            or options.RequirePremium == true
-            or options.PremiumOnly == true
+        -- FREE ACCESS FIX:
+        -- A normal/free key MUST be able to open the UI.
+        -- PremiumOnly/RequiresPremium should lock individual controls only.
+        -- Legacy flags like RequirePremiumKey=true are intentionally ignored here
+        -- because they block the whole window before the locks can appear.
+        return options.StrictPremiumWindow == true
+            or options.StrictPremiumOnlyScript == true
+            or options.ForcePremiumWindowGate == true
     end
 
     local function ReturnPremiumBlockedWindow()
@@ -4814,12 +4820,17 @@ function zZzUILibrary:CreateWindow(options)
 
     function Window:SetPremiumStatus(isPremium, keyType)
         local g = getgenv and getgenv() or _G
+        local premium = isPremium == true
+
         g.zZzKeyInfo = {
-            Type = keyType or (isPremium and "Premium" or "Free"),
-            IsPremium = isPremium == true,
+            Type = keyType or (premium and "Premium" or "Free"),
+            IsPremium = premium,
+            isPremium = premium,
+            premium = premium,
             ExpireTime = 0,
         }
 
+        LastKeyInfo = g.zZzKeyInfo
         ApplyKeyInfo(g.zZzKeyInfo)
         RefreshPremiumLocks()
         return self
