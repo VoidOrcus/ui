@@ -393,78 +393,117 @@ function zZzUILibrary:CreateWindow(options)
             return nil
         end
 
-        -- Suporta dois formatos:
+        -- Suporta:
         -- 1) keyInfo direto da API/Junkie
         -- 2) wrapper do script: {Type="Free", IsPremium=false, Raw=keyInfo}
-        -- O Raw sempre tem prioridade para detectar o estado ATUAL da key.
+        -- REGRA: Raw/KeyInfo atual sempre vence. Arquivo/cfg antigo não pode manter Premium.
         local raw = type(info.Raw) == "table" and info.Raw or info
+        local hasWrapper = raw ~= info
 
-        local keyType =
-            raw.Type or raw.type or raw.Plan or raw.plan or raw.tier or raw.Tier or
-            raw.license_type or raw.licenseType or raw.key_type or raw.keyType or
-            info.Type or info.type or info.Plan or info.plan or info.tier or info.Tier or
-            info.license_type or info.licenseType or info.key_type or info.keyType
+        local function getAny(tbl, keys)
+            if type(tbl) ~= "table" then return nil end
+            for _, k in ipairs(keys) do
+                if tbl[k] ~= nil then return tbl[k] end
+            end
+            return nil
+        end
 
-        local expireRaw =
-            raw.ExpireTime or raw.expireTime or raw.ExpiresAt or raw.expiresAt or
-            raw.expires_at or raw.expires or raw.Expiry or raw.expiry or
-            raw.expiration or raw.expiration_date or raw.valid_until or raw.validUntil or
-            raw.endDate or raw.end_date or raw.expires_in or raw.time_left or
-            info.ExpireTime or info.expireTime or info.ExpiresAt or info.expiresAt or
-            info.expires_at or info.expires or info.Expiry or info.expiry or
-            info.expiration or info.expiration_date or info.valid_until or info.validUntil or
-            info.endDate or info.end_date or info.expires_in or info.time_left
+        local keyType = getAny(raw, {
+            "Type","type","Plan","plan","tier","Tier","license_type","licenseType",
+            "key_type","keyType","subscription","Subscription","rank","Rank"
+        })
+
+        if keyType == nil and not hasWrapper then
+            keyType = getAny(info, {
+                "Type","type","Plan","plan","tier","Tier","license_type","licenseType",
+                "key_type","keyType","subscription","Subscription","rank","Rank"
+            })
+        end
+
+        local expireRaw = getAny(raw, {
+            "ExpireTime","expireTime","ExpiresAt","expiresAt","expires_at","expires",
+            "Expiry","expiry","expiration","expiration_date","valid_until","validUntil",
+            "endDate","end_date","expires_in","time_left"
+        })
+
+        if expireRaw == nil and not hasWrapper then
+            expireRaw = getAny(info, {
+                "ExpireTime","expireTime","ExpiresAt","expiresAt","expires_at","expires",
+                "Expiry","expiry","expiration","expiration_date","valid_until","validUntil",
+                "endDate","end_date","expires_in","time_left"
+            })
+        end
 
         local expireTime = ParseJunkieDateForUI(expireRaw)
 
-        local timeLeftRaw =
-            raw.TimeLeft or raw.timeLeft or raw.Time or raw.time or raw.remaining or raw.Remaining or
-            info.TimeLeft or info.timeLeft or info.Time or info.time or info.remaining or info.Remaining
+        local timeLeftRaw = getAny(raw, {"TimeLeft","timeLeft","Time","time","remaining","Remaining"})
+        if timeLeftRaw == nil and not hasWrapper then
+            timeLeftRaw = getAny(info, {"TimeLeft","timeLeft","Time","time","remaining","Remaining"})
+        end
 
-        local timeLeftSeconds = tonumber(
-            raw.TimeLeftSeconds or raw.timeLeftSeconds or raw.secondsLeft or raw.remainingSeconds or raw.expires_in or
-            info.TimeLeftSeconds or info.timeLeftSeconds or info.secondsLeft or info.remainingSeconds or info.expires_in
-        )
+        local timeLeftSeconds = tonumber(getAny(raw, {
+            "TimeLeftSeconds","timeLeftSeconds","secondsLeft","remainingSeconds","expires_in"
+        }) or (not hasWrapper and getAny(info, {
+            "TimeLeftSeconds","timeLeftSeconds","secondsLeft","remainingSeconds","expires_in"
+        }) or nil))
 
         local function truthy(v)
             if v == true then return true end
             if type(v) == "number" then return v == 1 end
             if type(v) == "string" then
-                local x = v:lower()
+                local x = v:lower():gsub("^%s+", ""):gsub("%s+$", "")
                 return x == "true" or x == "1" or x == "yes" or x == "premium" or x == "lifetime" or x == "permanent"
             end
             return false
         end
 
-        local textBlob = string.lower(table.concat({
+        local function falsy(v)
+            if v == false then return true end
+            if type(v) == "number" then return v == 0 end
+            if type(v) == "string" then
+                local x = v:lower():gsub("^%s+", ""):gsub("%s+$", "")
+                return x == "false" or x == "0" or x == "no" or x == "free" or x == "normal" or x == "basic" or x == "gratuita" or x == "gratuito"
+            end
+            return false
+        end
+
+        local rawTextBlob = string.lower(table.concat({
             tostring(keyType or ""),
             tostring(raw.license_type or ""), tostring(raw.licenseType or ""),
             tostring(raw.plan or ""), tostring(raw.Plan or ""),
             tostring(raw.tier or ""), tostring(raw.Tier or ""),
             tostring(raw.subscription or ""), tostring(raw.Subscription or ""),
             tostring(raw.status or ""), tostring(raw.Status or ""),
-            tostring(info.license_type or ""), tostring(info.licenseType or ""),
-            tostring(info.plan or ""), tostring(info.Plan or ""),
-            tostring(info.tier or ""), tostring(info.Tier or ""),
-            tostring(info.subscription or ""), tostring(info.Subscription or ""),
-            tostring(info.status or ""), tostring(info.Status or ""),
+            tostring(raw.rank or ""), tostring(raw.Rank or ""),
         }, " "))
 
+        -- False/free no RETORNO ATUAL da API vence qualquer cfg/cache antigo.
+        local explicitFree =
+            falsy(raw.IsPremium) or falsy(raw.isPremium) or falsy(raw.is_premium) or
+            falsy(raw.premium) or falsy(raw.Premium) or
+            rawTextBlob:find("free", 1, true) ~= nil or
+            rawTextBlob:find("normal", 1, true) ~= nil or
+            rawTextBlob:find("basic", 1, true) ~= nil or
+            rawTextBlob:find("gratuit", 1, true) ~= nil
+
         local premium =
-            truthy(raw.IsPremium) or truthy(raw.isPremium) or truthy(raw.is_premium) or truthy(raw.premium) or truthy(raw.Premium) or
+            truthy(raw.IsPremium) or truthy(raw.isPremium) or truthy(raw.is_premium) or
+            truthy(raw.premium) or truthy(raw.Premium) or
             truthy(raw.is_lifetime) or truthy(raw.lifetime) or truthy(raw.permanent) or
-            truthy(info.IsPremium) or truthy(info.isPremium) or truthy(info.is_premium) or truthy(info.premium) or truthy(info.Premium) or
-            truthy(info.is_lifetime) or truthy(info.lifetime) or truthy(info.permanent) or
-            textBlob:find("premium", 1, true) ~= nil or
-            textBlob:find("lifetime", 1, true) ~= nil or
-            textBlob:find("permanent", 1, true) ~= nil or
-            textBlob:find("infinite", 1, true) ~= nil
+            rawTextBlob:find("premium", 1, true) ~= nil or
+            rawTextBlob:find("lifetime", 1, true) ~= nil or
+            rawTextBlob:find("permanent", 1, true) ~= nil or
+            rawTextBlob:find("infinite", 1, true) ~= nil
+
+        if explicitFree then
+            premium = false
+        end
 
         -- IMPORTANTE:
-        -- expireTime == 0 NÃO quer dizer Premium. Pode ser apenas "não retornou data".
-        -- Só marca premium infinito se a API atual falar life/perm/infinite/premium.
+        -- expireTime == 0 NÃO quer dizer Premium.
+        -- Só marca lifetime se o retorno ATUAL trouxer texto de lifetime/permanent/infinite.
         local expireText = tostring(expireRaw or ""):lower()
-        if expireText:find("life", 1, true) or expireText:find("perm", 1, true) or expireText:find("infinite", 1, true) then
+        if not explicitFree and (expireText:find("life", 1, true) or expireText:find("perm", 1, true) or expireText:find("infinite", 1, true)) then
             premium = true
             expireTime = 0
         end
@@ -515,22 +554,9 @@ function zZzUILibrary:CreateWindow(options)
             return explicitInfo
         end
 
-        -- Fallback: só lê JSON se NÃO houver keyInfo atual.
-        -- Não use ApexPremium.cfg como verdade absoluta, porque ele pode ficar stale.
-        if type(readfile) == "function" and type(isfile) == "function" then
-            local jsonInfo =
-                ReadJsonFileForKeyInfo("SentinelLibrary/Bin/ApexKeyInfo.json") or
-                ReadJsonFileForKeyInfo("SentinelLibrary/Bin/KeyInfo.json") or
-                ReadJsonFileForKeyInfo("zZzHub/KeyInfo.json") or
-                ReadJsonFileForKeyInfo("KeyInfo.json")
-
-            local normalizedJson = NormalizeKeyInfoForUI(jsonInfo)
-            if normalizedJson then
-                return normalizedJson
-            end
-        end
-
-        -- Sem informação atual: deixa UI abrir como Free.
+        -- NÃO usar ApexPremium.cfg/ApexTime.cfg como verdade de premium.
+        -- Esses arquivos podem estar antigos. Sem KeyInfo atual, a UI abre como Free.
+        -- Se quiser atualizar em tempo real, passe KeyValidator no CreateWindow.
         return {
             Type = "Free",
             ExpireTime = 0,
@@ -855,12 +881,18 @@ function zZzUILibrary:CreateWindow(options)
     end
 
     local function IsPremiumKeyActive()
-        local info = LastKeyInfo or ReadKeyInfo()
+        -- Sempre relê o KeyInfo atual. Não usa LastKeyInfo como fonte principal,
+        -- porque ele pode ter sido setado como Premium antes de a key ser rebaixada.
+        local info = ReadKeyInfo()
         info = NormalizeKeyInfoForUI(info) or info
-        return type(info) == "table" and info.IsPremium == true
+        if type(info) == "table" then
+            LastKeyInfo = info
+            return info.IsPremium == true
+        end
+        return false
     end
 
-    -- ═══════════════════════════════════════════════════════
+        -- ═══════════════════════════════════════════════════════
     -- 👑 PREMIUM SCRIPT GATE
     -- Se a UI for criada com RequirePremiumKey=true e a key não for Premium,
     -- não mostra nenhum frame, destrói a ScreenGui vazia e retorna nil.
@@ -4830,15 +4862,24 @@ function zZzUILibrary:CreateWindow(options)
         local g = getgenv and getgenv() or _G
 
         local info
+
         if type(isPremiumOrInfo) == "table" then
+            -- Melhor forma: passar o keyInfo atual da API/Junkie.
             info = NormalizeKeyInfoForUI(isPremiumOrInfo) or isPremiumOrInfo
         else
-            info = {
-                Type = keyType or (isPremiumOrInfo and "Premium" or "Free"),
-                IsPremium = isPremiumOrInfo == true,
-                ExpireTime = 0,
-                Raw = {},
-            }
+            -- Se o script principal passar booleano antigo/stale, NÃO confia nele primeiro.
+            -- Reconsulta o KeyInfo atual salvo em getgenv/options.
+            local live = ReadKeyInfo()
+            if type(live) == "table" and type(live.Raw) == "table" and next(live.Raw) ~= nil then
+                info = NormalizeKeyInfoForUI(live) or live
+            else
+                info = {
+                    Type = keyType or (isPremiumOrInfo and "Premium" or "Free"),
+                    IsPremium = isPremiumOrInfo == true,
+                    ExpireTime = 0,
+                    Raw = {},
+                }
+            end
         end
 
         g.zZzKeyInfo = info
@@ -4848,6 +4889,22 @@ function zZzUILibrary:CreateWindow(options)
         RefreshPremiumLocks()
         return self
     end
+
+    function Window:ForceRefreshKeyStatus(newKeyInfo)
+        local g = getgenv and getgenv() or _G
+
+        if type(newKeyInfo) == "table" then
+            g.zZzKeyInfo = newKeyInfo
+            g.CurrentKeyInfo = newKeyInfo
+            g.JunkieKeyInfo = newKeyInfo
+        end
+
+        local fresh = ReadKeyInfo()
+        ApplyKeyInfo(fresh)
+        RefreshPremiumLocks()
+        return self
+    end
+
 
     function Window:RefreshPremiumLocks()
         RefreshPremiumLocks()
