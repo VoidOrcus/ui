@@ -1,125 +1,90 @@
 --[[
 ===============================================================================
-    ANGELWS HUB UI LIBRARY
-    Angelcore + Glassmorphism + Black & White Luxury Layout
-    Responsive + Background inside UI + Fake Glass Blur + Live Performance
-    Layout-only: sem key system, sem funções de cheat/exploit.
+    ANGELWS SIMPLE UI LIBRARY
+    Angelcore + Glassmorphism + Black & White
+    Simples, responsiva, sem subpáginas e sem footer.
 
-    Background padrão:
-        rbxassetid://111631056614699
-
-    Exemplo:
-        local UI = loadstring(game:HttpGet("URL_DA_LIB"))()
-
-        local Window = UI:CreateWindow({
-            Title = "Angelws",
-            Subtitle = "E L E V A T E .  D O M I N A T E .  A S C E N D .",
-            Username = game.Players.LocalPlayer.Name,
-            BackgroundImage = "rbxassetid://111631056614699",
-            ToggleKey = Enum.KeyCode.RightShift,
-            DefaultPages = true
-        })
+    Padrão:
+    - Background preso dentro do frame da UI
+    - Páginas na lateral
+    - Página inicial: Config
+    - Header com botão minimizar/fechar
+    - Glow branco angelical no fundo
+    - Página Config com Welcome + Load/Save/Discord clipboard
 ===============================================================================
 ]]
 
 local Angelws = {}
-Angelws.Version = "AngelcoreGlass-Responsive-BG-2.0.0"
+Angelws.Version = "AngelwsSimpleGlass-1.0.0"
 
---// Services
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 
---// Theme
+local DEFAULT_BG = "rbxassetid://111631056614699"
+
 local Theme = {
-    PureWhite = Color3.fromRGB(255, 255, 255),
-    SoftWhite = Color3.fromRGB(235, 235, 240),
-    WhiteDim = Color3.fromRGB(180, 180, 190),
-    WhiteMuted = Color3.fromRGB(135, 135, 145),
-
+    White = Color3.fromRGB(255, 255, 255),
+    SoftWhite = Color3.fromRGB(230, 230, 235),
+    Muted = Color3.fromRGB(160, 160, 170),
+    Dark = Color3.fromRGB(5, 5, 8),
     Black = Color3.fromRGB(0, 0, 0),
-    Void = Color3.fromRGB(4, 4, 6),
-    Deep = Color3.fromRGB(8, 8, 11),
-    Glass = Color3.fromRGB(255, 255, 255),
-    GlassDark = Color3.fromRGB(12, 12, 16),
-
-    Success = Color3.fromRGB(155, 255, 198),
-    Warning = Color3.fromRGB(255, 230, 160),
-    Danger = Color3.fromRGB(255, 130, 130),
+    Green = Color3.fromRGB(145, 255, 190),
 }
 
-local DEFAULT_BACKGROUND = "rbxassetid://111631056614699"
-
---// Utility
 local function ParentGui()
     return (gethui and gethui()) or CoreGui
 end
 
-local function Tween(obj, props, duration, style, direction)
-    local info = TweenInfo.new(duration or 0.18, style or Enum.EasingStyle.Quint, direction or Enum.EasingDirection.Out)
-    local tw = TweenService:Create(obj, info, props)
+local function New(className, props, parent)
+    local obj = Instance.new(className)
+    for k, v in pairs(props or {}) do
+        obj[k] = v
+    end
+    if parent then
+        obj.Parent = parent
+    end
+    return obj
+end
+
+local function Tween(obj, props, t)
+    local tw = TweenService:Create(obj, TweenInfo.new(t or 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props)
     tw:Play()
     return tw
 end
 
-local function New(className, props, parent)
-    local obj = Instance.new(className)
-    if props then
-        for k, v in pairs(props) do
-            obj[k] = v
-        end
-    end
-    if parent then obj.Parent = parent end
-    return obj
+local function Corner(obj, r)
+    return New("UICorner", { CornerRadius = UDim.new(0, r or 12) }, obj)
 end
 
-local function Corner(parent, radius)
-    return New("UICorner", { CornerRadius = UDim.new(0, radius or 12) }, parent)
-end
-
-local function Stroke(parent, color, thickness, transparency)
+local function Stroke(obj, transparency, thickness)
     return New("UIStroke", {
-        Color = color or Theme.PureWhite,
+        Color = Theme.White,
+        Transparency = transparency or 0.65,
         Thickness = thickness or 1,
-        Transparency = transparency or 0.75,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-    }, parent)
+    }, obj)
 end
 
-local function Gradient(parent, c1, c2, rotation, transparency)
-    local grad = New("UIGradient", {
-        Rotation = rotation or 90,
+local function Gradient(obj, rot, t1, t2)
+    local g = New("UIGradient", {
+        Rotation = rot or 90,
         Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, c1 or Theme.PureWhite),
-            ColorSequenceKeypoint.new(1, c2 or Theme.Black),
+            ColorSequenceKeypoint.new(0, Theme.White),
+            ColorSequenceKeypoint.new(1, Theme.Black),
         }),
-    }, parent)
-    if transparency then
-        grad.Transparency = transparency
-    end
-    return grad
-end
-
-local function Padding(parent, l, r, t, b)
-    return New("UIPadding", {
-        PaddingLeft = UDim.new(0, l or 0),
-        PaddingRight = UDim.new(0, r or l or 0),
-        PaddingTop = UDim.new(0, t or l or 0),
-        PaddingBottom = UDim.new(0, b or t or l or 0),
-    }, parent)
-end
-
-local function List(parent, paddingPx, direction)
-    return New("UIListLayout", {
-        FillDirection = direction or Enum.FillDirection.Vertical,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, paddingPx or 8),
-    }, parent)
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, t1 or 0.86),
+            NumberSequenceKeypoint.new(0.5, 0.985),
+            NumberSequenceKeypoint.new(1, t2 or 0.92),
+        }),
+    }, obj)
+    return g
 end
 
 local function Text(parent, text, size, color, font, align)
@@ -131,89 +96,273 @@ local function Text(parent, text, size, color, font, align)
         TextSize = size or 13,
         TextXAlignment = align or Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Center,
-        TextWrapped = false,
         TextTruncate = Enum.TextTruncate.AtEnd,
         RichText = true,
     }, parent)
 end
 
-local function ButtonText(parent, text, size)
-    local btn = New("TextButton", {
-        BackgroundColor3 = Theme.Glass,
-        BackgroundTransparency = 0.91,
-        BorderSizePixel = 0,
-        Text = text or "",
-        TextColor3 = Theme.SoftWhite,
-        Font = Enum.Font.GothamBold,
-        TextSize = size or 12,
-        AutoButtonColor = false,
-        RichText = true,
+local function Pad(parent, all)
+    return New("UIPadding", {
+        PaddingTop = UDim.new(0, all or 8),
+        PaddingBottom = UDim.new(0, all or 8),
+        PaddingLeft = UDim.new(0, all or 8),
+        PaddingRight = UDim.new(0, all or 8),
     }, parent)
-    Corner(btn, 12)
-    Stroke(btn, Theme.PureWhite, 1, 0.76)
+end
 
-    local shine = New("Frame", {
-        Name = "ButtonHighlight",
-        BackgroundColor3 = Theme.PureWhite,
-        BackgroundTransparency = 0.88,
+local function List(parent, gap)
+    return New("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, gap or 8),
+    }, parent)
+end
+
+local function MakeGlass(parent, props)
+    props = props or {}
+
+    local frame = New("Frame", {
+        Name = props.Name or "Glass",
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = props.Transparency or 0.91,
         BorderSizePixel = 0,
-        Size = UDim2.new(1, -12, 0, 1),
-        Position = UDim2.new(0, 6, 0, 5),
-        ZIndex = btn.ZIndex + 1,
-    }, btn)
+        Size = props.Size or UDim2.fromOffset(100, 100),
+        Position = props.Position or UDim2.fromOffset(0, 0),
+        ZIndex = props.ZIndex or 1,
+        ClipsDescendants = true,
+        LayoutOrder = props.LayoutOrder or 0,
+        AutomaticSize = props.AutomaticSize or Enum.AutomaticSize.None,
+    }, parent)
+
+    Corner(frame, props.Radius or 18)
+    Stroke(frame, props.StrokeTransparency or 0.62, props.StrokeThickness or 1)
+    Gradient(frame, props.GradientRotation or 135, props.G1 or 0.86, props.G2 or 0.94)
+
+    local highlight = New("Frame", {
+        Name = "WhiteHighlight",
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = props.HighlightTransparency or 0.55,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -26, 0, 1),
+        Position = UDim2.new(0, 13, 0, 9),
+        ZIndex = frame.ZIndex + 2,
+    }, frame)
+
+    Gradient(highlight, 0, 1, 1)
+
+    return frame
+end
+
+local function MakeButton(parent, title, desc, icon, callback)
+    local btn = New("TextButton", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.90,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Size = UDim2.new(1, 0, 0, 64),
+        ZIndex = 20,
+    }, parent)
+
+    Corner(btn, 16)
+    Stroke(btn, 0.64, 1)
+    Gradient(btn, 135, 0.84, 0.98)
+
+    local ico = Text(btn, icon or "(icone)", 16, Theme.White, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
+    ico.Size = UDim2.new(0, 54, 1, 0)
+    ico.Position = UDim2.new(0, 6, 0, 0)
+    ico.ZIndex = 22
+
+    local t = Text(btn, title or "Button", 13, Theme.White, Enum.Font.GothamBold)
+    t.Size = UDim2.new(1, -70, 0, 24)
+    t.Position = UDim2.new(0, 66, 0, 12)
+    t.ZIndex = 22
+
+    local d = Text(btn, desc or "", 11, Theme.Muted, Enum.Font.GothamMedium)
+    d.Size = UDim2.new(1, -70, 0, 20)
+    d.Position = UDim2.new(0, 66, 0, 36)
+    d.ZIndex = 22
+
+    btn.MouseEnter:Connect(function()
+        Tween(btn, { BackgroundTransparency = 0.80 }, 0.14)
+    end)
+
+    btn.MouseLeave:Connect(function()
+        Tween(btn, { BackgroundTransparency = 0.90 }, 0.14)
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        if callback then
+            callback()
+        end
+    end)
+
     return btn
 end
 
-local function AddHover(button, baseTrans, hoverTrans)
-    baseTrans = baseTrans or button.BackgroundTransparency
-    hoverTrans = hoverTrans or math.max(0, baseTrans - 0.08)
-    button.MouseEnter:Connect(function()
-        Tween(button, {BackgroundTransparency = hoverTrans}, 0.14)
+local function MakeToggle(parent, title, desc, default, callback)
+    local active = default == true
+
+    local frame = MakeGlass(parent, {
+        Size = UDim2.new(1, 0, 0, 66),
+        Radius = 16,
+        Transparency = 0.91,
+        StrokeTransparency = 0.65,
+        ZIndex = 20,
+    })
+
+    local t = Text(frame, title or "Toggle", 13, Theme.White, Enum.Font.GothamBold)
+    t.Size = UDim2.new(1, -95, 0, 24)
+    t.Position = UDim2.new(0, 16, 0, 12)
+    t.ZIndex = 22
+
+    local d = Text(frame, desc or "", 11, Theme.Muted, Enum.Font.GothamMedium)
+    d.Size = UDim2.new(1, -95, 0, 20)
+    d.Position = UDim2.new(0, 16, 0, 36)
+    d.ZIndex = 22
+
+    local sw = New("TextButton", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = active and 0.70 or 0.90,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Size = UDim2.new(0, 54, 0, 28),
+        Position = UDim2.new(1, -72, 0.5, -14),
+        ZIndex = 22,
+    }, frame)
+    Corner(sw, 14)
+    Stroke(sw, 0.66, 1)
+
+    local knob = New("Frame", {
+        BackgroundColor3 = Theme.White,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = active and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10),
+        ZIndex = 23,
+    }, sw)
+    Corner(knob, 10)
+
+    local function render()
+        Tween(sw, { BackgroundTransparency = active and 0.70 or 0.90 }, 0.15)
+        Tween(knob, {
+            Position = active and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)
+        }, 0.15)
+    end
+
+    sw.MouseButton1Click:Connect(function()
+        active = not active
+        render()
+        if callback then callback(active) end
     end)
-    button.MouseLeave:Connect(function()
-        Tween(button, {BackgroundTransparency = baseTrans}, 0.14)
-    end)
+
+    return {
+        SetValue = function(_, v)
+            active = v == true
+            render()
+        end,
+        GetValue = function()
+            return active
+        end,
+        Frame = frame,
+    }
 end
 
-local function ToScale(frame, baseWidth, baseHeight, minScale, maxScale)
-    local cam = workspace.CurrentCamera
-    local vp = (cam and cam.ViewportSize) or Vector2.new(1366, 768)
+local function MakeSlider(parent, title, min, max, default, callback)
+    min = tonumber(min) or 0
+    max = tonumber(max) or 100
+    local value = math.clamp(tonumber(default) or min, min, max)
 
-    local marginX = 34
-    local marginY = 34
-    local sx = (vp.X - marginX) / baseWidth
-    local sy = (vp.Y - marginY) / baseHeight
-    local scale = math.min(sx, sy)
+    local frame = MakeGlass(parent, {
+        Size = UDim2.new(1, 0, 0, 76),
+        Radius = 16,
+        Transparency = 0.91,
+        StrokeTransparency = 0.65,
+        ZIndex = 20,
+    })
 
-    scale = math.clamp(scale, minScale or 0.58, maxScale or 1.0)
+    local t = Text(frame, title or "Slider", 13, Theme.White, Enum.Font.GothamBold)
+    t.Size = UDim2.new(1, -90, 0, 24)
+    t.Position = UDim2.new(0, 16, 0, 12)
+    t.ZIndex = 22
 
-    frame.Size = UDim2.fromOffset(math.floor(baseWidth * scale), math.floor(baseHeight * scale))
-    frame.Position = UDim2.new(0.5, -math.floor(baseWidth * scale / 2), 0.5, -math.floor(baseHeight * scale / 2))
+    local v = Text(frame, tostring(value), 12, Theme.White, Enum.Font.GothamBlack, Enum.TextXAlignment.Right)
+    v.Size = UDim2.new(0, 70, 0, 24)
+    v.Position = UDim2.new(1, -86, 0, 12)
+    v.ZIndex = 22
 
-    return scale
+    local bar = New("TextButton", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.90,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Size = UDim2.new(1, -32, 0, 10),
+        Position = UDim2.new(0, 16, 0, 50),
+        ZIndex = 22,
+    }, frame)
+    Corner(bar, 5)
+
+    local fill = New("Frame", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.18,
+        BorderSizePixel = 0,
+        Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+        ZIndex = 23,
+    }, bar)
+    Corner(fill, 5)
+
+    local dragging = false
+
+    local function setFromX(x)
+        local a = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        value = math.floor((min + (max - min) * a) + 0.5)
+        fill.Size = UDim2.new(a, 0, 1, 0)
+        v.Text = tostring(value)
+        if callback then callback(value) end
+    end
+
+    bar.MouseButton1Down:Connect(function()
+        dragging = true
+        setFromX(UIS:GetMouseLocation().X)
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            setFromX(input.Position.X)
+        end
+    end)
+
+    return {
+        SetValue = function(_, val)
+            value = math.clamp(tonumber(val) or min, min, max)
+            local a = (value - min) / (max - min)
+            fill.Size = UDim2.new(a, 0, 1, 0)
+            v.Text = tostring(value)
+        end,
+        GetValue = function()
+            return value
+        end,
+        Frame = frame,
+    }
 end
 
 local function GetPingMs()
-    local ping = nil
-
+    local ping = 0
     pcall(function()
         local item = Stats.Network.ServerStatsItem["Data Ping"]
         local str = item:GetValueString()
-        ping = tonumber(str:match("[%d%.]+"))
+        ping = tonumber(str:match("[%d%.]+")) or 0
     end)
-
-    if not ping then
-        pcall(function()
-            local item = Stats.PerformanceStats.Ping
-            local str = item:GetValueString()
-            ping = tonumber(str:match("[%d%.]+"))
-        end)
-    end
-
-    return ping or 0
+    return ping
 end
 
-local function GetMemoryMb()
+local function GetMemory()
     local mb = 0
     pcall(function()
         mb = Stats:GetTotalMemoryUsageMb()
@@ -221,179 +370,20 @@ local function GetMemoryMb()
     return mb
 end
 
-local function CreateViewportCharacter(parent)
-    local viewport = New("ViewportFrame", {
-        BackgroundColor3 = Theme.Black,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        Ambient = Color3.fromRGB(190, 190, 200),
-        LightColor = Color3.fromRGB(255, 255, 255),
-        LightDirection = Vector3.new(-1, -1, -1),
-    }, parent)
-
-    local cam = Instance.new("Camera")
-    cam.Parent = viewport
-    viewport.CurrentCamera = cam
-
-    local world = Instance.new("WorldModel")
-    world.Parent = viewport
-
-    local function refresh()
-        world:ClearAllChildren()
-
-        local char = LocalPlayer and LocalPlayer.Character
-        if not char then return end
-
-        local oldArchivable = char.Archivable
-        char.Archivable = true
-
-        local clone
-        local ok = pcall(function()
-            clone = char:Clone()
-        end)
-
-        char.Archivable = oldArchivable
-
-        if not ok or not clone then return end
-
-        for _, d in ipairs(clone:GetDescendants()) do
-            if d:IsA("Script") or d:IsA("LocalScript") then
-                d:Destroy()
-            elseif d:IsA("BasePart") then
-                d.Anchored = true
-                d.CanCollide = false
-                d.CastShadow = false
-            end
-        end
-
-        clone.Parent = world
-
-        local root = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChild("UpperTorso") or clone:FindFirstChildWhichIsA("BasePart")
-        local humanoid = clone:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            pcall(function()
-                humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-            end)
-        end
-
-        if root then
-            root.CFrame = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(180), 0)
-            cam.CFrame = CFrame.new(Vector3.new(0, 1.3, 5.8), Vector3.new(0, 1.15, 0))
-            cam.FieldOfView = 31
-        end
-    end
-
-    task.defer(refresh)
-    if LocalPlayer then
-        LocalPlayer.CharacterAdded:Connect(function()
-            task.wait(1)
-            refresh()
-        end)
-    end
-
-    return viewport
-end
-
-local function GlassFrame(parent, props)
-    props = props or {}
-
-    local frame = New("Frame", {
-        Name = props.Name or "GlassFrame",
-        BackgroundColor3 = props.Color or Theme.Glass,
-        BackgroundTransparency = props.Transparency or 0.925,
-        BorderSizePixel = 0,
-        Size = props.Size or UDim2.fromOffset(100, 100),
-        Position = props.Position or UDim2.fromOffset(0, 0),
-        ClipsDescendants = props.ClipsDescendants ~= false,
-        ZIndex = props.ZIndex or 1,
-        LayoutOrder = props.LayoutOrder or 0,
-        AutomaticSize = props.AutomaticSize or Enum.AutomaticSize.None,
-    }, parent)
-
-    Corner(frame, props.Radius or 18)
-    Stroke(frame, props.StrokeColor or Theme.PureWhite, props.StrokeThickness or 1, props.StrokeTransparency or 0.63)
-
-    if props.GlassBackgroundImage then
-        local bg = New("ImageLabel", {
-            Name = "GlassFakeBlurBackground",
-            BackgroundTransparency = 1,
-            Image = props.GlassBackgroundImage,
-            ImageTransparency = props.GlassImageTransparency or 0.72,
-            ImageColor3 = Color3.fromRGB(230, 230, 235),
-            ScaleType = Enum.ScaleType.Crop,
-            Size = UDim2.new(1.14, 0, 1.14, 0),
-            Position = UDim2.new(-0.07, 0, -0.07, 0),
-            ZIndex = frame.ZIndex,
-        }, frame)
-
-        local dark = New("Frame", {
-            Name = "GlassDarkVeil",
-            BackgroundColor3 = Theme.Black,
-            BackgroundTransparency = props.DarkVeilTransparency or 0.37,
-            BorderSizePixel = 0,
-            Size = UDim2.fromScale(1, 1),
-            ZIndex = frame.ZIndex + 1,
-        }, frame)
-
-        local white = New("Frame", {
-            Name = "GlassWhiteVeil",
-            BackgroundColor3 = Theme.PureWhite,
-            BackgroundTransparency = props.WhiteVeilTransparency or 0.94,
-            BorderSizePixel = 0,
-            Size = UDim2.fromScale(1, 1),
-            ZIndex = frame.ZIndex + 2,
-        }, frame)
-
-        Gradient(white, Theme.PureWhite, Theme.Black, props.GradientRotation or 135, NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.86),
-            NumberSequenceKeypoint.new(0.45, 0.985),
-            NumberSequenceKeypoint.new(1, 0.93),
-        }))
-    elseif props.Gradient ~= false then
-        Gradient(frame, props.GradientA or Theme.PureWhite, props.GradientB or Theme.Black, props.GradientRotation or 135, NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.88),
-            NumberSequenceKeypoint.new(0.5, 0.99),
-            NumberSequenceKeypoint.new(1, 0.93),
-        }))
-    end
-
-    local topHighlight = New("Frame", {
-        Name = "TopWhiteHighlight",
-        BackgroundColor3 = Theme.PureWhite,
-        BackgroundTransparency = props.HighlightTransparency or 0.58,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, -24, 0, 1),
-        Position = UDim2.new(0, 12, 0, 9),
-        ZIndex = frame.ZIndex + 4,
-    }, frame)
-    Gradient(topHighlight, Theme.PureWhite, Theme.Black, 0, NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.5, 0.15),
-        NumberSequenceKeypoint.new(1, 1),
-    }))
-
-    return frame
-end
-
---// Create main UI
 function Angelws:CreateWindow(options)
     options = options or {}
 
     local Window = {}
     Window.Pages = {}
-    Window.SubPages = {}
     Window.CurrentPage = nil
-    Window.CurrentSubPage = nil
-    Window.Flags = options.Flags or {}
 
-    local backgroundImage = options.BackgroundImage or DEFAULT_BACKGROUND
+    local bgAsset = options.BackgroundImage or DEFAULT_BG
+    local baseW = tonumber(options.BaseWidth) or 980
+    local baseH = tonumber(options.BaseHeight) or 610
+    local minScale = tonumber(options.MinScale) or 0.62
+    local maxScale = tonumber(options.MaxScale) or 1
 
-    local baseWidth = tonumber(options.BaseWidth) or 1200
-    local baseHeight = tonumber(options.BaseHeight) or 690
-    local minScale = tonumber(options.MinScale) or 0.56
-    local maxScale = tonumber(options.MaxScale) or 1.0
-
-    local guiName = options.GuiName or "Angelws_Hub_Interface"
+    local guiName = options.GuiName or "Angelws_Simple_UI"
     local old = ParentGui():FindFirstChild(guiName)
     if old then old:Destroy() end
 
@@ -407,548 +397,228 @@ function Angelws:CreateWindow(options)
     Window.ScreenGui = ScreenGui
 
     local Root = New("Frame", {
-        Name = "Root",
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
     }, ScreenGui)
 
-    -- Main window
-    local Main = GlassFrame(Root, {
-        Name = "MainWindow",
-        Size = UDim2.fromOffset(baseWidth, baseHeight),
-        Position = UDim2.new(0.5, -baseWidth/2, 0.5, -baseHeight/2),
-        Radius = 24,
-        Transparency = 0.945,
-        StrokeTransparency = 0.42,
-        StrokeThickness = 1.35,
+    local Main = New("Frame", {
+        Name = "Main",
+        BackgroundColor3 = Theme.Black,
+        BackgroundTransparency = 0,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(baseW, baseH),
+        Position = UDim2.new(0.5, -baseW / 2, 0.5, -baseH / 2),
         ClipsDescendants = true,
-        Gradient = false,
-        ZIndex = 1,
-    })
+    }, Root)
+    Corner(Main, 24)
+    Stroke(Main, 0.42, 1.35)
 
-    local uiScale = New("UIScale", {Scale = 1}, Main)
-    local function ApplyResponsive()
-        local s = ToScale(Main, baseWidth, baseHeight, minScale, maxScale)
-        uiScale.Scale = 1
-        return s
+    local function responsive()
+        local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1366, 768)
+        local s = math.min((vp.X - 34) / baseW, (vp.Y - 34) / baseH)
+        s = math.clamp(s, minScale, maxScale)
+
+        local w = math.floor(baseW * s)
+        local h = math.floor(baseH * s)
+
+        Main.Size = UDim2.fromOffset(w, h)
+        Main.Position = UDim2.new(0.5, -w / 2, 0.5, -h / 2)
     end
-    ApplyResponsive()
 
+    responsive()
     if workspace.CurrentCamera then
-        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(ApplyResponsive)
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(responsive)
     end
 
-    -- Background preso dentro do frame da UI
-    local Background = New("ImageLabel", {
-        Name = "AngelwsBackgroundInsideUI",
+    -- Background preso no frame da UI
+    local Bg = New("ImageLabel", {
+        Name = "BackgroundInsideUI",
         BackgroundTransparency = 1,
-        Image = backgroundImage,
+        Image = bgAsset,
         ImageColor3 = Color3.fromRGB(235, 235, 240),
-        ImageTransparency = 0.03,
+        ImageTransparency = 0.02,
         ScaleType = Enum.ScaleType.Crop,
         Size = UDim2.fromScale(1, 1),
-        Position = UDim2.fromScale(0, 0),
         ZIndex = 0,
     }, Main)
 
-    local BackgroundDim = New("Frame", {
-        Name = "BackgroundDimInsideUI",
+    local DarkVeil = New("Frame", {
         BackgroundColor3 = Theme.Black,
-        BackgroundTransparency = 0.23,
+        BackgroundTransparency = 0.34,
         BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1),
         ZIndex = 1,
     }, Main)
 
-    local BackgroundVignette = New("Frame", {
-        Name = "BackgroundVignette",
-        BackgroundColor3 = Theme.Black,
-        BackgroundTransparency = 0.60,
+    -- Glow branco angelical no fundo
+    local Glow1 = New("Frame", {
+        Name = "AngelGlowCenter",
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.925,
         BorderSizePixel = 0,
-        Size = UDim2.fromScale(1, 1),
+        Size = UDim2.new(0, 560, 0, 180),
+        Position = UDim2.new(0.5, -120, 0, 58),
+        Rotation = -14,
         ZIndex = 2,
     }, Main)
-    Gradient(BackgroundVignette, Theme.Black, Theme.PureWhite, 90, NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.10),
-        NumberSequenceKeypoint.new(0.5, 0.86),
-        NumberSequenceKeypoint.new(1, 0.12),
-    }))
+    Corner(Glow1, 90)
+    Gradient(Glow1, 16, 0.2, 1)
 
-    local OuterShine = New("Frame", {
-        Name = "OuterShine",
-        BackgroundColor3 = Theme.PureWhite,
-        BackgroundTransparency = 0.958,
+    local Glow2 = New("Frame", {
+        Name = "AngelGlowSide",
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.955,
         BorderSizePixel = 0,
-        Size = UDim2.new(1, -18, 0, 126),
-        Position = UDim2.new(0, 9, 0, 9),
-        ZIndex = 3,
+        Size = UDim2.new(0, 390, 0, 390),
+        Position = UDim2.new(1, -300, 0, -110),
+        Rotation = 8,
+        ZIndex = 2,
     }, Main)
-    Corner(OuterShine, 22)
-    Gradient(OuterShine, Theme.PureWhite, Color3.fromRGB(15,15,18), 8)
+    Corner(Glow2, 200)
+    Gradient(Glow2, 35, 0.25, 1)
 
-    local Header = New("Frame", {
+    local Header = MakeGlass(Main, {
         Name = "Header",
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -30, 0, 126),
-        Position = UDim2.new(0, 15, 0, 12),
+        Size = UDim2.new(1, -24, 0, 86),
+        Position = UDim2.new(0, 12, 0, 12),
+        Radius = 20,
+        Transparency = 0.895,
+        StrokeTransparency = 0.50,
         ZIndex = 10,
-    }, Main)
+    })
 
-    local Brand = Text(Header, options.Title or "Angelws", 47, Theme.PureWhite, Enum.Font.Garamond, Enum.TextXAlignment.Center)
-    Brand.Name = "BrandTitle"
-    Brand.Size = UDim2.new(0, 480, 0, 60)
-    Brand.Position = UDim2.new(0.5, -240, 0, 18)
-    Brand.TextStrokeColor3 = Color3.fromRGB(255,255,255)
+    local BrandIcon = Text(Header, options.WingText or "(icone: asas)", 12, Theme.White, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
+    BrandIcon.Size = UDim2.new(0, 150, 0, 18)
+    BrandIcon.Position = UDim2.new(0, 30, 0, 10)
+    BrandIcon.ZIndex = 12
+
+    local Brand = Text(Header, options.Title or "Angelws", 34, Theme.White, Enum.Font.Garamond)
+    Brand.Size = UDim2.new(0, 320, 0, 46)
+    Brand.Position = UDim2.new(0, 32, 0, 27)
+    Brand.TextStrokeColor3 = Theme.White
     Brand.TextStrokeTransparency = 0.78
     Brand.ZIndex = 12
 
-    local WingMark = Text(Header, options.WingText or "(icone: asas)", 13, Theme.SoftWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    WingMark.Size = UDim2.new(0, 180, 0, 22)
-    WingMark.Position = UDim2.new(0.5, -90, 0, 0)
-    WingMark.TextTransparency = 0.08
-    WingMark.ZIndex = 12
+    local Sub = Text(Header, options.Subtitle or "E L E V A T E .  D O M I N A T E .  A S C E N D .", 10, Theme.Muted, Enum.Font.GothamMedium)
+    Sub.Size = UDim2.new(0, 440, 0, 18)
+    Sub.Position = UDim2.new(0, 250, 0, 52)
+    Sub.ZIndex = 12
 
-    local Subtitle = Text(Header, options.Subtitle or "E L E V A T E .  D O M I N A T E .  A S C E N D .", 10, Theme.WhiteDim, Enum.Font.GothamMedium, Enum.TextXAlignment.Center)
-    Subtitle.Size = UDim2.new(0, 520, 0, 18)
-    Subtitle.Position = UDim2.new(0.5, -260, 0, 78)
-    Subtitle.TextTransparency = 0.05
-    Subtitle.ZIndex = 12
-
-    local HeaderDivider = New("Frame", {
-        BackgroundColor3 = Theme.PureWhite,
-        BackgroundTransparency = 0.58,
+    local Minimize = New("TextButton", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.90,
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 210, 0, 1),
-        Position = UDim2.new(0.5, -105, 0, 101),
+        Text = "—",
+        TextColor3 = Theme.White,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 18,
+        AutoButtonColor = false,
+        Size = UDim2.new(0, 38, 0, 34),
+        Position = UDim2.new(1, -90, 0, 26),
         ZIndex = 12,
     }, Header)
-    Gradient(HeaderDivider, Theme.PureWhite, Theme.Black, 0, NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.5, 0.05),
-        NumberSequenceKeypoint.new(1, 1),
-    }))
+    Corner(Minimize, 12)
+    Stroke(Minimize, 0.70, 1)
 
-    -- Profile card
-    local Profile = GlassFrame(Header, {
-        Name = "ProfileCard",
-        Size = UDim2.new(0, 286, 0, 92),
-        Position = UDim2.new(1, -300, 0, 14),
-        Radius = 20,
-        Transparency = 0.885,
-        StrokeTransparency = 0.43,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.68,
-        DarkVeilTransparency = 0.48,
-        ZIndex = 13,
-    })
-
-    local AvatarWrap = GlassFrame(Profile, {
-        Name = "AvatarWrap",
-        Size = UDim2.new(0, 66, 0, 66),
-        Position = UDim2.new(0, 16, 0.5, -33),
-        Radius = 33,
-        Transparency = 0.84,
-        StrokeTransparency = 0.28,
-        Gradient = false,
-        ZIndex = 15,
-    })
-    AvatarWrap.ClipsDescendants = true
-
-    local viewport = CreateViewportCharacter(AvatarWrap)
-    viewport.Size = UDim2.fromScale(1, 1)
-    viewport.ZIndex = 16
-
-    local ProfileName = Text(Profile, options.Username or (LocalPlayer and LocalPlayer.Name or "Username"), 15, Theme.PureWhite, Enum.Font.GothamBold)
-    ProfileName.Size = UDim2.new(1, -122, 0, 22)
-    ProfileName.Position = UDim2.new(0, 96, 0, 18)
-    ProfileName.ZIndex = 16
-
-    local ProfileTag = Text(Profile, "@" .. tostring(options.Handle or (LocalPlayer and LocalPlayer.Name or "username")), 11, Theme.WhiteDim, Enum.Font.GothamMedium)
-    ProfileTag.Size = UDim2.new(1, -122, 0, 18)
-    ProfileTag.Position = UDim2.new(0, 96, 0, 40)
-    ProfileTag.ZIndex = 16
-
-    local ProfileBadge = GlassFrame(Profile, {
-        Size = UDim2.new(0, 88, 0, 22),
-        Position = UDim2.new(0, 96, 0, 62),
-        Radius = 11,
-        Transparency = 0.78,
-        StrokeTransparency = 0.55,
-        Gradient = false,
-        ZIndex = 16,
-    })
-    local ProfileBadgeText = Text(ProfileBadge, options.ProfileBadge or "PREMIUM", 9, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    ProfileBadgeText.Size = UDim2.fromScale(1,1)
-    ProfileBadgeText.ZIndex = 17
-
-    local CrownText = Text(Profile, "(icone)", 15, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    CrownText.Size = UDim2.new(0, 42, 0, 22)
-    CrownText.Position = UDim2.new(1, -52, 0, 14)
-    CrownText.ZIndex = 16
-
-    local Online = Text(Profile, "Online •", 11, Theme.Success, Enum.Font.GothamBold)
-    Online.Size = UDim2.new(0, 80, 0, 18)
-    Online.Position = UDim2.new(1, -94, 1, -28)
-    Online.ZIndex = 16
-
-    -- Layout constants with separated containers
-    local topY = 146
-    local bottomFooterH = 56
-    local bottomMargin = 16
-    local colGap = 14
-
-    local sidebarX, sidebarW = 16, 170
-    local subX, subW = sidebarX + sidebarW + colGap, 164
-    local rightW = 276
-    local rightX = baseWidth - rightW - 16
-    local contentX = subX + subW + colGap
-    local contentW = rightX - contentX - colGap
-    local bodyH = baseHeight - topY - bottomFooterH - bottomMargin - 14
-
-    -- Sidebar
-    local Sidebar = GlassFrame(Main, {
-        Name = "Sidebar",
-        Size = UDim2.new(0, sidebarW, 0, bodyH),
-        Position = UDim2.new(0, sidebarX, 0, topY),
-        Radius = 20,
-        Transparency = 0.898,
-        StrokeTransparency = 0.48,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.76,
-        DarkVeilTransparency = 0.43,
-        ZIndex = 10,
-    })
-    Padding(Sidebar, 10, 10, 12, 12)
-    List(Sidebar, 12)
-
-    local SidebarIcon = Text(Sidebar, "✦", 24, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    SidebarIcon.Size = UDim2.new(1, 0, 0, 30)
-    SidebarIcon.LayoutOrder = 1
-    SidebarIcon.ZIndex = 15
-
-    local SidebarList = New("Frame", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -120),
-        LayoutOrder = 2,
-        ZIndex = 15,
-    }, Sidebar)
-    List(SidebarList, 8)
-
-    local SideFooter = GlassFrame(Sidebar, {
-        Name = "SidebarFooter",
-        Size = UDim2.new(1, 0, 0, 62),
-        Radius = 16,
-        Transparency = 0.91,
-        StrokeTransparency = 0.66,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.80,
-        DarkVeilTransparency = 0.50,
-        LayoutOrder = 3,
-        GradientRotation = 20,
-        ZIndex = 15,
-    })
-    local SideFooterText = Text(SideFooter, "(imagem: asas)", 12, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    SideFooterText.Size = UDim2.fromScale(1,1)
-    SideFooterText.TextTransparency = 0.05
-    SideFooterText.ZIndex = 18
-
-    -- Sub navigation
-    local SubNav = GlassFrame(Main, {
-        Name = "SubNavigation",
-        Size = UDim2.new(0, subW, 0, bodyH),
-        Position = UDim2.new(0, subX, 0, topY),
-        Radius = 20,
-        Transparency = 0.905,
-        StrokeTransparency = 0.50,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.77,
-        DarkVeilTransparency = 0.45,
-        ZIndex = 10,
-    })
-    Padding(SubNav, 10, 10, 12, 12)
-    List(SubNav, 10)
-
-    local SubTitle = Text(SubNav, "HOME", 13, Theme.PureWhite, Enum.Font.GothamBlack)
-    SubTitle.Name = "SubTitle"
-    SubTitle.Size = UDim2.new(1, 0, 0, 26)
-    SubTitle.LayoutOrder = 1
-    SubTitle.ZIndex = 15
-
-    local SubList = New("ScrollingFrame", {
-        BackgroundTransparency = 1,
+    local Close = New("TextButton", {
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.90,
         BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 1, -156),
-        ScrollBarThickness = 0,
-        CanvasSize = UDim2.fromOffset(0, 0),
-        LayoutOrder = 2,
-        ZIndex = 15,
-    }, SubNav)
-    local SubListLayout = List(SubList, 7)
-    SubListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        SubList.CanvasSize = UDim2.fromOffset(0, SubListLayout.AbsoluteContentSize.Y + 8)
-    end)
+        Text = "×",
+        TextColor3 = Theme.White,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 18,
+        AutoButtonColor = false,
+        Size = UDim2.new(0, 38, 0, 34),
+        Position = UDim2.new(1, -46, 0, 26),
+        ZIndex = 12,
+    }, Header)
+    Corner(Close, 12)
+    Stroke(Close, 0.70, 1)
 
-    -- Frase agora fica em baixo
-    local QuoteBox = GlassFrame(SubNav, {
-        Name = "QuoteBoxBottom",
-        Size = UDim2.new(1, 0, 0, 116),
+    local Body = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -24, 1, -118),
+        Position = UDim2.new(0, 12, 0, 106),
+        ZIndex = 10,
+    }, Main)
+
+    local Sidebar = MakeGlass(Body, {
+        Name = "Sidebar",
+        Size = UDim2.new(0, 190, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        Radius = 20,
+        Transparency = 0.90,
+        StrokeTransparency = 0.54,
+        ZIndex = 11,
+    })
+    Pad(Sidebar, 10)
+    List(Sidebar, 8)
+
+    local SideTop = Text(Sidebar, "✦  Pages", 14, Theme.White, Enum.Font.GothamBlack)
+    SideTop.Size = UDim2.new(1, 0, 0, 28)
+    SideTop.LayoutOrder = 1
+    SideTop.ZIndex = 14
+
+    local PageButtons = New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, -110),
+        LayoutOrder = 2,
+        ZIndex = 14,
+    }, Sidebar)
+    List(PageButtons, 8)
+
+    local Quote = MakeGlass(Sidebar, {
+        Size = UDim2.new(1, 0, 0, 86),
         Radius = 16,
         Transparency = 0.925,
         StrokeTransparency = 0.70,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.84,
-        DarkVeilTransparency = 0.53,
         LayoutOrder = 3,
-        GradientRotation = 145,
-        ZIndex = 15,
+        ZIndex = 14,
     })
-    local QuoteWing = Text(QuoteBox, "(imagem: asas)", 10, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-    QuoteWing.Size = UDim2.new(1, 0, 0, 18)
-    QuoteWing.Position = UDim2.new(0, 0, 0, 8)
-    QuoteWing.ZIndex = 18
+    local QuoteText = Text(Quote, "We are not just players.\nWe are angels of our own story.", 12, Theme.SoftWhite, Enum.Font.Garamond, Enum.TextXAlignment.Center)
+    QuoteText.Size = UDim2.new(1, -12, 1, -12)
+    QuoteText.Position = UDim2.new(0, 6, 0, 6)
+    QuoteText.TextWrapped = true
+    QuoteText.ZIndex = 16
 
-    local Quote = Text(QuoteBox, "We are not\njust players.\nWe are angels of\nour own story.", 12, Theme.SoftWhite, Enum.Font.Garamond, Enum.TextXAlignment.Center)
-    Quote.Size = UDim2.new(1, -12, 0, 78)
-    Quote.Position = UDim2.new(0, 6, 0, 30)
-    Quote.TextWrapped = true
-    Quote.TextYAlignment = Enum.TextYAlignment.Center
-    Quote.ZIndex = 18
-
-    -- Right column
-    local RightColumn = New("Frame", {
-        Name = "RightColumn",
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, rightW, 0, bodyH),
-        Position = UDim2.new(0, rightX, 0, topY),
-        ZIndex = 10,
-    }, Main)
-    List(RightColumn, 14)
-
-    local Performance = GlassFrame(RightColumn, {
-        Name = "PerformancePanel",
-        Size = UDim2.new(1, 0, 0, 210),
-        Radius = 20,
-        Transparency = 0.898,
-        StrokeTransparency = 0.49,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.76,
-        DarkVeilTransparency = 0.44,
-        LayoutOrder = 1,
-        ZIndex = 11,
-    })
-    Padding(Performance, 14)
-    List(Performance, 10)
-
-    local PerfTitle = Text(Performance, "✦  Performance", 15, Theme.PureWhite, Enum.Font.GothamBold)
-    PerfTitle.Size = UDim2.new(1, 0, 0, 24)
-    PerfTitle.LayoutOrder = 1
-    PerfTitle.ZIndex = 16
-
-    local PerfLabels = {}
-    local PerfFills = {}
-
-    local function PerfRow(order, name, value, alpha)
-        local row = New("Frame", {
-            Name = name .. "Row",
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 28),
-            LayoutOrder = order,
-            ZIndex = 16,
-        }, Performance)
-
-        local n = Text(row, name, 11, Theme.SoftWhite, Enum.Font.GothamMedium)
-        n.Size = UDim2.new(0, 62, 1, 0)
-        n.ZIndex = 16
-
-        local bar = GlassFrame(row, {
-            Size = UDim2.new(1, -118, 0, 8),
-            Position = UDim2.new(0, 72, 0.5, -4),
-            Radius = 4,
-            Transparency = 0.925,
-            StrokeTransparency = 0.88,
-            Gradient = false,
-            ZIndex = 16,
-        })
-
-        local fill = New("Frame", {
-            BackgroundColor3 = Theme.PureWhite,
-            BackgroundTransparency = 0.18,
-            BorderSizePixel = 0,
-            Size = UDim2.new(alpha or 0.5, 0, 1, 0),
-            ZIndex = 18,
-        }, bar)
-        Corner(fill, 4)
-
-        local v = Text(row, value, 11, Theme.PureWhite, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
-        v.Size = UDim2.new(0, 44, 1, 0)
-        v.Position = UDim2.new(1, -44, 0, 0)
-        v.ZIndex = 16
-
-        PerfLabels[name] = v
-        PerfFills[name] = fill
-    end
-
-    PerfRow(2, "FPS", "0", 0.1)
-    PerfRow(3, "Ping", "0ms", 0.1)
-    PerfRow(4, "Memory", "0MB", 0.1)
-    PerfRow(5, "CPU", "0%", 0.1)
-
-    local Featured = GlassFrame(RightColumn, {
-        Name = "FeaturedPanel",
-        Size = UDim2.new(1, 0, 0, 228),
-        Radius = 20,
-        Transparency = 0.90,
-        StrokeTransparency = 0.50,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.78,
-        DarkVeilTransparency = 0.46,
-        LayoutOrder = 2,
-        ZIndex = 11,
-    })
-    Padding(Featured, 12)
-    List(Featured, 10)
-
-    local FtTitle = Text(Featured, "✦  Featured", 15, Theme.PureWhite, Enum.Font.GothamBold)
-    FtTitle.Size = UDim2.new(1, 0, 0, 24)
-    FtTitle.LayoutOrder = 1
-    FtTitle.ZIndex = 16
-
-    local Banner = GlassFrame(Featured, {
-        Size = UDim2.new(1, 0, 0, 136),
-        Radius = 18,
-        Transparency = 0.91,
-        StrokeTransparency = 0.62,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.72,
-        DarkVeilTransparency = 0.36,
-        LayoutOrder = 2,
-        GradientRotation = 140,
-        ZIndex = 16,
-    })
-    local BannerText = Text(Banner, "ANGELIC\nPOWER", 24, Theme.PureWhite, Enum.Font.Garamond, Enum.TextXAlignment.Center)
-    BannerText.Size = UDim2.new(1, 0, 0, 64)
-    BannerText.Position = UDim2.new(0, 0, 0.5, -32)
-    BannerText.TextWrapped = true
-    BannerText.ZIndex = 20
-
-    local Learn = ButtonText(Featured, "Learn More", 11)
-    Learn.Size = UDim2.new(0, 112, 0, 28)
-    Learn.LayoutOrder = 3
-    Learn.ZIndex = 16
-    AddHover(Learn, 0.91, 0.80)
-
-    -- Content area
-    local Content = GlassFrame(Main, {
+    local Content = MakeGlass(Body, {
         Name = "Content",
-        Size = UDim2.new(0, contentW, 0, bodyH),
-        Position = UDim2.new(0, contentX, 0, topY),
+        Size = UDim2.new(1, -204, 1, 0),
+        Position = UDim2.new(0, 204, 0, 0),
         Radius = 20,
-        Transparency = 0.900,
-        StrokeTransparency = 0.48,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.76,
-        DarkVeilTransparency = 0.43,
-        ZIndex = 10,
+        Transparency = 0.895,
+        StrokeTransparency = 0.52,
+        ZIndex = 11,
     })
 
     local PageHolder = New("Frame", {
-        Name = "PageHolder",
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -18, 1, -18),
-        Position = UDim2.new(0, 9, 0, 9),
-        ZIndex = 15,
+        Size = UDim2.new(1, -20, 1, -20),
+        Position = UDim2.new(0, 10, 0, 10),
+        ZIndex = 14,
     }, Content)
 
-    -- Footer
-    local Footer = GlassFrame(Main, {
-        Name = "Footer",
-        Size = UDim2.new(1, -32, 0, bottomFooterH),
-        Position = UDim2.new(0, 16, 1, -(bottomFooterH + 14)),
-        Radius = 19,
-        Transparency = 0.895,
-        StrokeTransparency = 0.48,
-        GlassBackgroundImage = backgroundImage,
-        GlassImageTransparency = 0.74,
-        DarkVeilTransparency = 0.43,
-        ZIndex = 15,
-        GradientRotation = 0,
-    })
-    Padding(Footer, 16, 16, 8, 8)
+    local minimized = false
+    Minimize.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        Body.Visible = not minimized
+        if minimized then
+            Tween(Main, {Size = UDim2.new(Main.Size.X.Scale, Main.Size.X.Offset, 0, 110)}, 0.22)
+        else
+            responsive()
+        end
+    end)
 
-    New("UIGridLayout", {
-        CellPadding = UDim2.new(0, 14, 0, 0),
-        CellSize = UDim2.new(0.2, -12, 1, 0),
-        FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }, Footer)
+    Close.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+    end)
 
-    local function FooterItem(order, icon, title, desc)
-        local item = New("Frame", {
-            BackgroundTransparency = 1,
-            LayoutOrder = order,
-            ZIndex = 18,
-        }, Footer)
-
-        local ico = Text(item, icon or "(icone)", 16, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-        ico.Size = UDim2.new(0, 32, 1, 0)
-        ico.ZIndex = 18
-
-        local t = Text(item, title, 12, Theme.PureWhite, Enum.Font.GothamBold)
-        t.Size = UDim2.new(1, -40, 0, 20)
-        t.Position = UDim2.new(0, 40, 0, 5)
-        t.ZIndex = 18
-
-        local d = Text(item, desc, 10, Theme.WhiteDim, Enum.Font.GothamMedium)
-        d.Size = UDim2.new(1, -40, 0, 18)
-        d.Position = UDim2.new(0, 40, 0, 25)
-        d.ZIndex = 18
-    end
-
-    FooterItem(1, "(icone)", "Status", "Operational")
-    FooterItem(2, "(icone)", "Profile", "Viewport active")
-    FooterItem(3, "(icone)", "Connection", "Stable")
-    FooterItem(4, "(icone)", "Angelws", "Glass background")
-    FooterItem(5, "(icone)", "© 2026", "Luxury interface")
-
-    -- Optimized performance update
-    do
-        local frames = 0
-        local elapsed = 0
-        local fps = 0
-        local frameCost = 0
-
-        RunService.RenderStepped:Connect(function(dt)
-            frames += 1
-            elapsed += dt
-            frameCost = frameCost * 0.9 + dt * 0.1
-
-            if elapsed >= 1 then
-                fps = math.floor(frames / elapsed + 0.5)
-                frames = 0
-                elapsed = 0
-
-                local ping = GetPingMs()
-                local memory = GetMemoryMb()
-                local cpuApprox = math.clamp(math.floor((frameCost / (1/60)) * 35 + 0.5), 0, 100)
-
-                if PerfLabels.FPS then PerfLabels.FPS.Text = tostring(fps) end
-                if PerfLabels.Ping then PerfLabels.Ping.Text = tostring(math.floor(ping + 0.5)) .. "ms" end
-                if PerfLabels.Memory then PerfLabels.Memory.Text = tostring(math.floor(memory + 0.5)) .. "MB" end
-                if PerfLabels.CPU then PerfLabels.CPU.Text = tostring(cpuApprox) .. "%" end
-
-                if PerfFills.FPS then PerfFills.FPS.Size = UDim2.new(math.clamp(fps / 240, 0.04, 1), 0, 1, 0) end
-                if PerfFills.Ping then PerfFills.Ping.Size = UDim2.new(math.clamp(1 - (ping / 300), 0.04, 1), 0, 1, 0) end
-                if PerfFills.Memory then PerfFills.Memory.Size = UDim2.new(math.clamp(memory / 2500, 0.04, 1), 0, 1, 0) end
-                if PerfFills.CPU then PerfFills.CPU.Size = UDim2.new(math.clamp(cpuApprox / 100, 0.04, 1), 0, 1, 0) end
-            end
-        end)
-    end
-
-    -- Drag movement
+    -- Drag
     do
         local dragging = false
-        local dragStart = nil
-        local startPos = nil
+        local dragStart
+        local startPos
 
         Header.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -958,13 +628,13 @@ function Angelws:CreateWindow(options)
             end
         end)
 
-        UserInputService.InputEnded:Connect(function(input)
+        UIS.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
             end
         end)
 
-        UserInputService.InputChanged:Connect(function(input)
+        UIS.InputChanged:Connect(function(input)
             if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
                 local delta = input.Position - dragStart
                 Main.Position = UDim2.new(
@@ -977,567 +647,262 @@ function Angelws:CreateWindow(options)
         end)
     end
 
-    -- Toggle visibility
+    local function SelectPage(page)
+        for _, p in ipairs(Window.Pages) do
+            local active = p == page
+            p.Frame.Visible = active
+            Tween(p.Button, {BackgroundTransparency = active and 0.78 or 0.91}, 0.16)
+            p.Button.Title.TextColor3 = active and Theme.White or Theme.Muted
+        end
+        Window.CurrentPage = page
+    end
+
+    function Window:CreatePage(title, icon)
+        local page = {}
+        page.Title = tostring(title or "Page")
+        page.Icon = tostring(icon or "(icone)")
+
+        local button = New("TextButton", {
+            BackgroundColor3 = Theme.White,
+            BackgroundTransparency = 0.91,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 48),
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 15,
+        }, PageButtons)
+        Corner(button, 14)
+        Stroke(button, 0.72, 1)
+        Gradient(button, 135, 0.86, 0.98)
+
+        local ico = Text(button, page.Icon, 15, Theme.White, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
+        ico.Size = UDim2.new(0, 42, 1, 0)
+        ico.ZIndex = 17
+
+        local label = Text(button, page.Title, 13, Theme.Muted, Enum.Font.GothamBold)
+        label.Name = "Title"
+        label.Size = UDim2.new(1, -52, 1, 0)
+        label.Position = UDim2.new(0, 50, 0, 0)
+        label.ZIndex = 17
+
+        local frame = New("ScrollingFrame", {
+            Name = page.Title .. "_Page",
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1),
+            CanvasSize = UDim2.fromOffset(0, 0),
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = Theme.White,
+            ScrollBarImageTransparency = 0.35,
+            Visible = false,
+            ZIndex = 15,
+        }, PageHolder)
+        Pad(frame, 4)
+
+        local layout = List(frame, 12)
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            frame.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 20)
+        end)
+
+        function page:CreateSection(name)
+            local sec = MakeGlass(frame, {
+                Size = UDim2.new(1, -6, 0, 68),
+                Radius = 18,
+                Transparency = 0.91,
+                StrokeTransparency = 0.62,
+                AutomaticSize = Enum.AutomaticSize.Y,
+                ZIndex = 16,
+            })
+            Pad(sec, 12)
+            List(sec, 10)
+
+            local h = Text(sec, "✦  " .. tostring(name or "Section"), 15, Theme.White, Enum.Font.GothamBold)
+            h.Size = UDim2.new(1, 0, 0, 28)
+            h.ZIndex = 18
+
+            local section = {}
+
+            function section:CreateButton(titleText, desc, iconText, callback)
+                return MakeButton(sec, titleText, desc, iconText, callback)
+            end
+
+            function section:CreateToggle(titleText, desc, default, callback)
+                return MakeToggle(sec, titleText, desc, default, callback)
+            end
+
+            function section:CreateSlider(titleText, min, max, default, callback)
+                return MakeSlider(sec, titleText, min, max, default, callback)
+            end
+
+            return section
+        end
+
+        function page:CreateHero(titleText, desc)
+            local hero = MakeGlass(frame, {
+                Size = UDim2.new(1, -6, 0, 112),
+                Radius = 20,
+                Transparency = 0.885,
+                StrokeTransparency = 0.50,
+                ZIndex = 16,
+            })
+            Pad(hero, 16)
+
+            local t = Text(hero, titleText or "Welcome", 22, Theme.White, Enum.Font.GothamBold)
+            t.Size = UDim2.new(1, -30, 0, 34)
+            t.Position = UDim2.new(0, 0, 0, 10)
+            t.ZIndex = 18
+
+            local d = Text(hero, desc or "", 12, Theme.Muted, Enum.Font.GothamMedium)
+            d.Size = UDim2.new(1, -30, 0, 28)
+            d.Position = UDim2.new(0, 0, 0, 46)
+            d.ZIndex = 18
+
+            local wing = Text(hero, "(imagem: asas/glow)", 12, Theme.White, Enum.Font.GothamBlack, Enum.TextXAlignment.Right)
+            wing.Size = UDim2.new(0, 220, 0, 24)
+            wing.Position = UDim2.new(1, -230, 1, -36)
+            wing.ZIndex = 18
+
+            return hero
+        end
+
+        page.Button = button
+        page.Frame = frame
+
+        button.MouseButton1Click:Connect(function()
+            SelectPage(page)
+        end)
+
+        button.MouseEnter:Connect(function()
+            if Window.CurrentPage ~= page then
+                Tween(button, {BackgroundTransparency = 0.84}, 0.14)
+            end
+        end)
+
+        button.MouseLeave:Connect(function()
+            if Window.CurrentPage ~= page then
+                Tween(button, {BackgroundTransparency = 0.91}, 0.14)
+            end
+        end)
+
+        table.insert(Window.Pages, page)
+
+        return page
+    end
+
+    function Window:SelectPage(name)
+        for _, p in ipairs(Window.Pages) do
+            if p.Title == name then
+                SelectPage(p)
+                return p
+            end
+        end
+    end
+
+    function Window:Destroy()
+        ScreenGui:Destroy()
+    end
+
+    -- Performance simple helpers
+    function Window:CreatePerformancePage()
+        local page = self:CreatePage("Performance", "(icone)")
+        page:CreateHero("Performance", "Real-time FPS, ping and memory.")
+        local sec = page:CreateSection("Live Stats")
+
+        local labels = {}
+        local function makeStat(name, value)
+            local f = MakeGlass(sec.Frame or page.Frame, {})
+        end
+
+        local fpsBtn = sec:CreateButton("FPS", "0", "(icone)")
+        local pingBtn = sec:CreateButton("Ping", "0ms", "(icone)")
+        local memBtn = sec:CreateButton("Memory", "0MB", "(icone)")
+
+        local frames = 0
+        local elapsed = 0
+
+        RunService.RenderStepped:Connect(function(dt)
+            frames += 1
+            elapsed += dt
+            if elapsed >= 1 then
+                local fps = math.floor(frames / elapsed + 0.5)
+                frames = 0
+                elapsed = 0
+
+                if fpsBtn:FindFirstChildWhichIsA("TextLabel", true) then end
+            end
+        end)
+
+        return page
+    end
+
+    -- Página inicial Config
+    local Config = Window:CreatePage("Config", "(icone)")
+    Config:CreateHero(
+        "Welcome to Angelws, " .. tostring(options.Username or (LocalPlayer and LocalPlayer.Name or "Username")) .. ".",
+        "Simple angelcore glass layout. Use the buttons below to test the interface."
+    )
+
+    local quick = Config:CreateSection("Quick Actions")
+
+    quick:CreateButton("Load Config", "Placeholder for loading saved settings", "(icone)", function()
+        print("[Angelws] Load Config clicked")
+    end)
+
+    quick:CreateButton("Save Config", "Placeholder for saving current settings", "(icone)", function()
+        print("[Angelws] Save Config clicked")
+    end)
+
+    quick:CreateButton("Discord", "Copies your Discord invite/link to clipboard", "(icone)", function()
+        local link = options.Discord or "https://discord.gg/angelws"
+        if setclipboard then
+            setclipboard(link)
+        end
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Angelws",
+                Text = setclipboard and "Discord copied to clipboard." or "Clipboard not supported.",
+                Duration = 4
+            })
+        end)
+    end)
+
+    local uiSec = Config:CreateSection("Interface")
+    uiSec:CreateToggle("Glass Highlight", "Visual placeholder toggle", true)
+    uiSec:CreateSlider("Window Glow", 0, 100, 65)
+
+    if options.DefaultPages ~= false then
+        local Home = Window:CreatePage("Home", "(icone)")
+        Home:CreateHero("Home", "Clean page example without subpages or footer.")
+        local hs = Home:CreateSection("Dashboard")
+        hs:CreateButton("Example Button", "A simple placeholder button", "(icone)")
+        hs:CreateToggle("Example Toggle", "Visual only", false)
+        hs:CreateSlider("Example Slider", 0, 100, 35)
+
+        local Visuals = Window:CreatePage("Visuals", "(icone)")
+        Visuals:CreateHero("Visuals", "Future visual settings can stay here.")
+        local vs = Visuals:CreateSection("Visual Options")
+        vs:CreateToggle("Enable Visuals", "Placeholder", false)
+        vs:CreateButton("Refresh", "Placeholder action", "(icone)")
+
+        local Settings = Window:CreatePage("Settings", "(icone)")
+        Settings:CreateHero("Settings", "General interface settings.")
+        local ss = Settings:CreateSection("Window")
+        ss:CreateButton("Destroy UI", "Close the Angelws interface", "(icone)", function()
+            Window:Destroy()
+        end)
+    end
+
+    task.defer(function()
+        Window:SelectPage("Config")
+    end)
+
     local toggleKey = options.ToggleKey or Enum.KeyCode.RightShift
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
         if input.KeyCode == toggleKey then
             Main.Visible = not Main.Visible
         end
     end)
-
-    function Window:Destroy()
-        if ScreenGui then ScreenGui:Destroy() end
-    end
-
-    function Window:SetProfileName(name, handle)
-        ProfileName.Text = tostring(name or "Username")
-        ProfileTag.Text = "@" .. tostring(handle or name or "username")
-    end
-
-    local function ClearSubButtons()
-        for _, child in ipairs(SubList:GetChildren()) do
-            if child:IsA("TextButton") then
-                child:Destroy()
-            end
-        end
-    end
-
-    local function SelectSubPage(subPage)
-        if not subPage then return end
-
-        for _, page in ipairs(Window.Pages) do
-            for _, sp in ipairs(page.SubPages) do
-                sp.Container.Visible = sp == subPage
-
-                if sp.Button then
-                    Tween(sp.Button, { BackgroundTransparency = sp == subPage and 0.78 or 0.93 }, 0.16)
-                    if sp.Button:FindFirstChild("Label") then
-                        sp.Button.Label.TextColor3 = sp == subPage and Theme.PureWhite or Theme.WhiteDim
-                    end
-                end
-            end
-        end
-
-        Window.CurrentSubPage = subPage
-    end
-
-    local function SelectPage(page)
-        if not page then return end
-
-        Window.CurrentPage = page
-        SubTitle.Text = string.upper(page.Title)
-
-        for _, p in ipairs(Window.Pages) do
-            local selected = p == page
-            Tween(p.Button, { BackgroundTransparency = selected and 0.78 or 0.93 }, 0.16)
-
-            p.Button.Title.TextColor3 = selected and Theme.PureWhite or Theme.WhiteDim
-            p.Button.Subtitle.TextColor3 = selected and Theme.SoftWhite or Theme.WhiteMuted
-            p.Button.Icon.TextColor3 = selected and Theme.PureWhite or Theme.WhiteMuted
-
-            for _, sp in ipairs(p.SubPages) do
-                sp.Container.Visible = false
-            end
-        end
-
-        ClearSubButtons()
-
-        for _, sp in ipairs(page.SubPages) do
-            sp.Button = ButtonText(SubList, "", 12)
-            sp.Button.Name = sp.Title .. "_SubButton"
-            sp.Button.Size = UDim2.new(1, 0, 0, 34)
-            sp.Button.BackgroundTransparency = 0.93
-            sp.Button.ZIndex = 16
-
-            local lbl = Text(sp.Button, "  •  " .. sp.Title, 12, Theme.WhiteDim, Enum.Font.GothamMedium)
-            lbl.Name = "Label"
-            lbl.Size = UDim2.fromScale(1, 1)
-            lbl.Position = UDim2.fromOffset(6, 0)
-            lbl.ZIndex = 17
-
-            AddHover(sp.Button, 0.93, 0.84)
-            sp.Button.MouseButton1Click:Connect(function()
-                SelectSubPage(sp)
-            end)
-        end
-
-        SelectSubPage(page.SubPages[1])
-    end
-
-    function Window:CreatePage(title, subtitle, icon)
-        local Page = {}
-        Page.Title = tostring(title or "Page")
-        Page.Subtitle = tostring(subtitle or "Dashboard")
-        Page.Icon = tostring(icon or "(icone)")
-        Page.SubPages = {}
-
-        local Button = New("TextButton", {
-            Name = Page.Title .. "_PageButton",
-            BackgroundColor3 = Theme.Glass,
-            BackgroundTransparency = 0.93,
-            BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 54),
-            Text = "",
-            AutoButtonColor = false,
-            ZIndex = 16,
-        }, SidebarList)
-        Corner(Button, 14)
-        Stroke(Button, Theme.PureWhite, 1, 0.76)
-        Gradient(Button, Theme.PureWhite, Theme.Black, 135, NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.86),
-            NumberSequenceKeypoint.new(1, 0.99),
-        }))
-
-        local Ico = Text(Button, Page.Icon, 15, Theme.WhiteMuted, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-        Ico.Name = "Icon"
-        Ico.Size = UDim2.new(0, 38, 1, 0)
-        Ico.Position = UDim2.new(0, 3, 0, 0)
-        Ico.ZIndex = 17
-
-        local T = Text(Button, Page.Title, 13, Theme.WhiteDim, Enum.Font.GothamBold)
-        T.Name = "Title"
-        T.Size = UDim2.new(1, -50, 0, 22)
-        T.Position = UDim2.new(0, 48, 0, 8)
-        T.ZIndex = 17
-
-        local S = Text(Button, Page.Subtitle, 10, Theme.WhiteMuted, Enum.Font.GothamMedium)
-        S.Name = "Subtitle"
-        S.Size = UDim2.new(1, -50, 0, 18)
-        S.Position = UDim2.new(0, 48, 0, 29)
-        S.ZIndex = 17
-
-        Page.Button = Button
-        AddHover(Button, 0.93, 0.84)
-
-        Button.MouseButton1Click:Connect(function()
-            SelectPage(Page)
-        end)
-
-        function Page:CreateSubPage(name)
-            local SubPage = {}
-            SubPage.Title = tostring(name or "SubPage")
-
-            local Container = New("ScrollingFrame", {
-                Name = Page.Title .. "_" .. SubPage.Title .. "_Container",
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                Size = UDim2.fromScale(1, 1),
-                ScrollBarThickness = 3,
-                ScrollBarImageColor3 = Theme.PureWhite,
-                ScrollBarImageTransparency = 0.35,
-                CanvasSize = UDim2.fromOffset(0, 0),
-                Visible = false,
-                ZIndex = 16,
-            }, PageHolder)
-            Padding(Container, 10, 10, 10, 10)
-
-            local Layout = List(Container, 14)
-            Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-                Container.CanvasSize = UDim2.fromOffset(0, Layout.AbsoluteContentSize.Y + 24)
-            end)
-
-            SubPage.Container = Container
-
-            function SubPage:CreateHero(titleText, description, iconText)
-                local Hero = GlassFrame(Container, {
-                    Size = UDim2.new(1, 0, 0, 112),
-                    Radius = 20,
-                    Transparency = 0.90,
-                    StrokeTransparency = 0.54,
-                    GlassBackgroundImage = backgroundImage,
-                    GlassImageTransparency = 0.80,
-                    DarkVeilTransparency = 0.48,
-                    LayoutOrder = #Container:GetChildren() + 1,
-                    GradientRotation = 12,
-                    ZIndex = 17,
-                })
-                Padding(Hero, 16)
-
-                local I = Text(Hero, iconText or "(icone)", 20, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-                I.Size = UDim2.new(0, 40, 0, 40)
-                I.Position = UDim2.new(0, 0, 0, 4)
-                I.ZIndex = 20
-
-                local H = Text(Hero, titleText or "Welcome back, Username.", 20, Theme.PureWhite, Enum.Font.GothamBold)
-                H.Size = UDim2.new(1, -60, 0, 30)
-                H.Position = UDim2.new(0, 54, 0, 8)
-                H.ZIndex = 20
-
-                local D = Text(Hero, description or "Here's what is happening with your hub today.", 12, Theme.WhiteDim, Enum.Font.GothamMedium)
-                D.Size = UDim2.new(1, -60, 0, 24)
-                D.Position = UDim2.new(0, 54, 0, 38)
-                D.ZIndex = 20
-
-                local Mini = GlassFrame(Hero, {
-                    Size = UDim2.new(0, 150, 0, 34),
-                    Position = UDim2.new(1, -160, 1, -44),
-                    Radius = 12,
-                    Transparency = 0.90,
-                    StrokeTransparency = 0.68,
-                    Gradient = false,
-                    ZIndex = 20,
-                })
-                local MiniText = Text(Mini, "(icone)  Ready", 11, Theme.Success, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-                MiniText.Size = UDim2.fromScale(1, 1)
-                MiniText.ZIndex = 21
-
-                return Hero
-            end
-
-            function SubPage:CreateSection(sectionTitle, sectionIcon)
-                local Section = {}
-                Section.Title = tostring(sectionTitle or "Section")
-
-                local Sec = GlassFrame(Container, {
-                    Size = UDim2.new(1, 0, 0, 76),
-                    Radius = 20,
-                    Transparency = 0.905,
-                    StrokeTransparency = 0.56,
-                    GlassBackgroundImage = backgroundImage,
-                    GlassImageTransparency = 0.82,
-                    DarkVeilTransparency = 0.48,
-                    LayoutOrder = #Container:GetChildren() + 1,
-                    GradientRotation = 145,
-                    AutomaticSize = Enum.AutomaticSize.Y,
-                    ZIndex = 17,
-                })
-                Padding(Sec, 12, 12, 12, 12)
-                List(Sec, 12)
-
-                local HeaderRow = New("Frame", {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 28),
-                    LayoutOrder = 1,
-                    ZIndex = 20,
-                }, Sec)
-
-                local Icon = Text(HeaderRow, sectionIcon or "✦", 16, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-                Icon.Size = UDim2.new(0, 30, 1, 0)
-                Icon.ZIndex = 20
-
-                local HeaderText = Text(HeaderRow, Section.Title, 15, Theme.PureWhite, Enum.Font.GothamBold)
-                HeaderText.Size = UDim2.new(1, -40, 1, 0)
-                HeaderText.Position = UDim2.new(0, 38, 0, 0)
-                HeaderText.ZIndex = 20
-
-                local ContentGrid = New("Frame", {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 0),
-                    AutomaticSize = Enum.AutomaticSize.Y,
-                    LayoutOrder = 2,
-                    ZIndex = 20,
-                }, Sec)
-                New("UIGridLayout", {
-                    CellPadding = UDim2.new(0, 12, 0, 12),
-                    CellSize = UDim2.new(0.5, -6, 0, 82),
-                    SortOrder = Enum.SortOrder.LayoutOrder,
-                }, ContentGrid)
-
-                function Section:CreateStatCard(titleText, valueText, iconText)
-                    local Card = GlassFrame(ContentGrid, {
-                        Size = UDim2.new(0, 100, 0, 82),
-                        Radius = 16,
-                        Transparency = 0.90,
-                        StrokeTransparency = 0.64,
-                        GlassBackgroundImage = backgroundImage,
-                        GlassImageTransparency = 0.84,
-                        DarkVeilTransparency = 0.52,
-                        GradientRotation = 155,
-                        ZIndex = 21,
-                    })
-
-                    local I = Text(Card, iconText or "(icone)", 18, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-                    I.Size = UDim2.new(0, 48, 0, 26)
-                    I.Position = UDim2.new(0.5, -24, 0, 10)
-                    I.ZIndex = 24
-
-                    local T = Text(Card, titleText or "Title", 10, Theme.WhiteDim, Enum.Font.GothamMedium, Enum.TextXAlignment.Center)
-                    T.Size = UDim2.new(1, -10, 0, 18)
-                    T.Position = UDim2.new(0, 5, 0, 40)
-                    T.ZIndex = 24
-
-                    local V = Text(Card, valueText or "Value", 13, Theme.PureWhite, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-                    V.Size = UDim2.new(1, -10, 0, 18)
-                    V.Position = UDim2.new(0, 5, 0, 59)
-                    V.ZIndex = 24
-
-                    return Card
-                end
-
-                function Section:CreateButton(titleText, description, iconText, callback)
-                    local Btn = New("TextButton", {
-                        BackgroundColor3 = Theme.Glass,
-                        BackgroundTransparency = 0.90,
-                        BorderSizePixel = 0,
-                        Size = UDim2.new(0, 100, 0, 82),
-                        Text = "",
-                        AutoButtonColor = false,
-                        ZIndex = 21,
-                    }, ContentGrid)
-                    Corner(Btn, 16)
-                    Stroke(Btn, Theme.PureWhite, 1, 0.64)
-                    Gradient(Btn, Theme.PureWhite, Theme.Black, 140, NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, 0.84),
-                        NumberSequenceKeypoint.new(1, 0.98),
-                    }))
-
-                    local I = Text(Btn, iconText or "(icone)", 17, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Center)
-                    I.Size = UDim2.new(0, 46, 1, 0)
-                    I.Position = UDim2.new(0, 8, 0, 0)
-                    I.ZIndex = 24
-
-                    local T = Text(Btn, titleText or "Button", 12, Theme.PureWhite, Enum.Font.GothamBold)
-                    T.Size = UDim2.new(1, -62, 0, 24)
-                    T.Position = UDim2.new(0, 58, 0, 17)
-                    T.ZIndex = 24
-
-                    local D = Text(Btn, description or "Description", 10, Theme.WhiteDim, Enum.Font.GothamMedium)
-                    D.Size = UDim2.new(1, -62, 0, 18)
-                    D.Position = UDim2.new(0, 58, 0, 43)
-                    D.ZIndex = 24
-
-                    AddHover(Btn, 0.90, 0.78)
-                    Btn.MouseButton1Click:Connect(function()
-                        if callback then callback() end
-                    end)
-
-                    return Btn
-                end
-
-                function Section:CreateToggle(titleText, description, default, callback)
-                    local active = default == true
-
-                    local Toggle = GlassFrame(ContentGrid, {
-                        Size = UDim2.new(0, 100, 0, 82),
-                        Radius = 16,
-                        Transparency = 0.90,
-                        StrokeTransparency = 0.64,
-                        GlassBackgroundImage = backgroundImage,
-                        GlassImageTransparency = 0.84,
-                        DarkVeilTransparency = 0.52,
-                        GradientRotation = 140,
-                        ZIndex = 21,
-                    })
-
-                    local T = Text(Toggle, titleText or "Toggle", 12, Theme.PureWhite, Enum.Font.GothamBold)
-                    T.Size = UDim2.new(1, -82, 0, 24)
-                    T.Position = UDim2.new(0, 14, 0, 16)
-                    T.ZIndex = 24
-
-                    local D = Text(Toggle, description or "Description", 10, Theme.WhiteDim, Enum.Font.GothamMedium)
-                    D.Size = UDim2.new(1, -82, 0, 18)
-                    D.Position = UDim2.new(0, 14, 0, 43)
-                    D.ZIndex = 24
-
-                    local Switch = New("TextButton", {
-                        BackgroundColor3 = Theme.PureWhite,
-                        BackgroundTransparency = active and 0.70 or 0.88,
-                        BorderSizePixel = 0,
-                        Size = UDim2.new(0, 52, 0, 28),
-                        Position = UDim2.new(1, -66, 0.5, -14),
-                        Text = "",
-                        AutoButtonColor = false,
-                        ZIndex = 24,
-                    }, Toggle)
-                    Corner(Switch, 14)
-                    Stroke(Switch, Theme.PureWhite, 1, 0.66)
-
-                    local Knob = New("Frame", {
-                        BackgroundColor3 = Theme.PureWhite,
-                        BackgroundTransparency = 0,
-                        BorderSizePixel = 0,
-                        Size = UDim2.new(0, 20, 0, 20),
-                        Position = active and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10),
-                        ZIndex = 25,
-                    }, Switch)
-                    Corner(Knob, 10)
-
-                    local function Render()
-                        Tween(Switch, {BackgroundTransparency = active and 0.70 or 0.88}, 0.15)
-                        Tween(Knob, {Position = active and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)}, 0.15)
-                    end
-
-                    Switch.MouseButton1Click:Connect(function()
-                        active = not active
-                        Render()
-                        if callback then callback(active) end
-                    end)
-
-                    return {
-                        Frame = Toggle,
-                        SetValue = function(_, v)
-                            active = v == true
-                            Render()
-                        end,
-                        GetValue = function()
-                            return active
-                        end
-                    }
-                end
-
-                function Section:CreateSlider(titleText, min, max, default, callback)
-                    min = tonumber(min) or 0
-                    max = tonumber(max) or 100
-                    local value = math.clamp(tonumber(default) or min, min, max)
-
-                    local Slider = GlassFrame(ContentGrid, {
-                        Size = UDim2.new(0, 100, 0, 82),
-                        Radius = 16,
-                        Transparency = 0.90,
-                        StrokeTransparency = 0.64,
-                        GlassBackgroundImage = backgroundImage,
-                        GlassImageTransparency = 0.84,
-                        DarkVeilTransparency = 0.52,
-                        GradientRotation = 140,
-                        ZIndex = 21,
-                    })
-
-                    local T = Text(Slider, titleText or "Slider", 12, Theme.PureWhite, Enum.Font.GothamBold)
-                    T.Size = UDim2.new(1, -72, 0, 22)
-                    T.Position = UDim2.new(0, 14, 0, 12)
-                    T.ZIndex = 24
-
-                    local V = Text(Slider, tostring(value), 11, Theme.PureWhite, Enum.Font.GothamBlack, Enum.TextXAlignment.Right)
-                    V.Size = UDim2.new(0, 54, 0, 22)
-                    V.Position = UDim2.new(1, -66, 0, 12)
-                    V.ZIndex = 24
-
-                    local Bar = New("TextButton", {
-                        BackgroundColor3 = Theme.PureWhite,
-                        BackgroundTransparency = 0.89,
-                        BorderSizePixel = 0,
-                        Text = "",
-                        AutoButtonColor = false,
-                        Size = UDim2.new(1, -28, 0, 10),
-                        Position = UDim2.new(0, 14, 0, 51),
-                        ZIndex = 24,
-                    }, Slider)
-                    Corner(Bar, 5)
-
-                    local Fill = New("Frame", {
-                        BackgroundColor3 = Theme.PureWhite,
-                        BackgroundTransparency = 0.18,
-                        BorderSizePixel = 0,
-                        Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
-                        ZIndex = 25,
-                    }, Bar)
-                    Corner(Fill, 5)
-
-                    local dragging = false
-
-                    local function SetFromX(x)
-                        local a = math.clamp((x - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X, 0, 1)
-                        value = math.floor((min + (max - min) * a) + 0.5)
-                        Fill.Size = UDim2.new(a, 0, 1, 0)
-                        V.Text = tostring(value)
-                        if callback then callback(value) end
-                    end
-
-                    Bar.MouseButton1Down:Connect(function()
-                        dragging = true
-                        SetFromX(UserInputService:GetMouseLocation().X)
-                    end)
-
-                    UserInputService.InputEnded:Connect(function(input)
-                        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-                    end)
-
-                    UserInputService.InputChanged:Connect(function(input)
-                        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                            SetFromX(input.Position.X)
-                        end
-                    end)
-
-                    return {
-                        Frame = Slider,
-                        SetValue = function(_, v)
-                            value = math.clamp(tonumber(v) or min, min, max)
-                            local a = (value - min) / (max - min)
-                            Fill.Size = UDim2.new(a, 0, 1, 0)
-                            V.Text = tostring(value)
-                        end,
-                        GetValue = function()
-                            return value
-                        end
-                    }
-                end
-
-                return Section
-            end
-
-            table.insert(Page.SubPages, SubPage)
-            table.insert(Window.SubPages, SubPage)
-
-            if Window.CurrentPage == Page then
-                SelectPage(Page)
-            end
-
-            return SubPage
-        end
-
-        table.insert(Window.Pages, Page)
-
-        if #Window.Pages == 1 then
-            local default = Page:CreateSubPage("Overview")
-            default:CreateHero(
-                "Welcome back, " .. tostring(options.Username or (LocalPlayer and LocalPlayer.Name or "Username")) .. ".",
-                "Here's what is happening with your Angelws hub today.",
-                "✦"
-            )
-
-            local sys = default:CreateSection("System Overview", "♱")
-            sys:CreateStatCard("Status", "Ready", "(icone)")
-            sys:CreateStatCard("Uptime", "00h 00m", "(icone)")
-            sys:CreateStatCard("Users Online", "1,428", "(icone)")
-            sys:CreateStatCard("Build", "v2.0.0", "(icone)")
-
-            local quick = default:CreateSection("Quick Actions", "✦")
-            quick:CreateButton("Load Config", "Import settings", "(icone)")
-            quick:CreateButton("Save Config", "Export settings", "(icone)")
-            quick:CreateButton("Join Discord", "Community", "(icone)")
-            quick:CreateButton("Support", "Get help", "(icone)")
-
-            task.defer(function()
-                SelectPage(Page)
-            end)
-        end
-
-        return Page
-    end
-
-    if options.DefaultPages ~= false then
-        local Combat = Window:CreatePage("Combat", "Aim & Fight", "(icone)")
-        local CombatMain = Combat:CreateSubPage("Main")
-        CombatMain:CreateHero("Combat", "Subpage example with premium glass cards.", "(icone)")
-        local CSection = CombatMain:CreateSection("Combat Section", "(icone)")
-        CSection:CreateToggle("Example Toggle", "Interface placeholder", false)
-        CSection:CreateSlider("Example Slider", 0, 100, 35)
-        CSection:CreateButton("Example Button", "Action placeholder", "(icone)")
-
-        local Movement = Window:CreatePage("Movement", "Move & Teleport", "(icone)")
-        local MoveMain = Movement:CreateSubPage("Main")
-        MoveMain:CreateHero("Movement", "Clean controls with black and white glass style.", "(icone)")
-        local MSection = MoveMain:CreateSection("Movement Section", "(icone)")
-        MSection:CreateToggle("Speed Boost", "Layout placeholder", false)
-        MSection:CreateToggle("Fly", "Layout placeholder", false)
-        MSection:CreateSlider("Speed", 1, 100, 25)
-
-        local Visuals = Window:CreatePage("Visuals", "ESP & World", "(icone)")
-        local VisualMain = Visuals:CreateSubPage("Main")
-        VisualMain:CreateHero("Visuals", "Glassmorphism components for future features.", "(icone)")
-        local VSection = VisualMain:CreateSection("Visual Section", "(icone)")
-        VSection:CreateToggle("Enable Visual", "Layout placeholder", false)
-        VSection:CreateButton("Refresh", "Visual refresh placeholder", "(icone)")
-
-        local Settings = Window:CreatePage("Settings", "Configuration", "(icone)")
-        local SetMain = Settings:CreateSubPage("Interface")
-        SetMain:CreateHero("Settings", "Customize the future interface here.", "(icone)")
-        local SSection = SetMain:CreateSection("Interface Section", "(icone)")
-        SSection:CreateButton("Destroy UI", "Close interface", "(icone)", function()
-            Window:Destroy()
-        end)
-    end
 
     return Window
 end
